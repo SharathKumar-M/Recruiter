@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "VERIF-AI"
+version = "1.0.0"
+id = "artifacts/verifai"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18418
+
+[services.development]
+run = "pnpm --filter @workspace/verifai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/verifai", "run", "build" ]
+publicDir = "artifacts/verifai/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18418"
+BASE_PATH = "/"

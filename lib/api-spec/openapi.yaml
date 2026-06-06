@@ -3,20 +3,29 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: VERIF-AI API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: jobs
+    description: Job listing operations
+  - name: student
+    description: Student profile operations
+  - name: recruiter
+    description: Recruiter operations
+  - name: ai
+    description: AI verification operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +33,556 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── AUTH ──────────────────────────────────────────────────────────────────
+  /auth/sync:
+    post:
+      operationId: syncUser
+      tags: [auth]
+      summary: Sync authenticated user into DB
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSyncInput"
+      responses:
+        "200":
+          description: Synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSyncResult"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  # ── JOBS ──────────────────────────────────────────────────────────────────
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all active jobs
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: skills
+          in: query
+          schema: { type: string }
+        - name: jobType
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new job (recruiter only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+      responses:
+        "201":
+          description: Created job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/filters:
+    get:
+      operationId: getJobFilters
+      tags: [jobs]
+      summary: Get available filter options
+      responses:
+        "200":
+          description: Filter options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobFilters"
+
+  /jobs/my-applications:
+    get:
+      operationId: getMyApplications
+      tags: [jobs]
+      summary: Get current student's applications
+      responses:
+        "200":
+          description: Student's applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Application"
+
+  /jobs/{jobId}/apply:
+    post:
+      operationId: applyToJob
+      tags: [jobs]
+      summary: Apply to a job (student only)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Applied successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+
+  # ── STUDENT ───────────────────────────────────────────────────────────────
+  /student/profile:
+    get:
+      operationId: getStudentProfile
+      tags: [student]
+      summary: Get student profile
+      responses:
+        "200":
+          description: Student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+    put:
+      operationId: updateStudentProfile
+      tags: [student]
+      summary: Update student profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentProfileInput"
+      responses:
+        "200":
+          description: Updated student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+
+  /student/stats:
+    get:
+      operationId: getStudentStats
+      tags: [student]
+      summary: Get student dashboard stats
+      responses:
+        "200":
+          description: Student stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentStats"
+
+  # ── RECRUITER ─────────────────────────────────────────────────────────────
+  /recruiter/profile:
+    get:
+      operationId: getRecruiterProfile
+      tags: [recruiter]
+      summary: Get recruiter profile
+      responses:
+        "200":
+          description: Recruiter profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecruiterProfile"
+    put:
+      operationId: updateRecruiterProfile
+      tags: [recruiter]
+      summary: Update recruiter profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecruiterProfileInput"
+      responses:
+        "200":
+          description: Updated recruiter profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecruiterProfile"
+
+  /recruiter/jobs:
+    get:
+      operationId: getRecruiterJobs
+      tags: [recruiter]
+      summary: Get recruiter's posted jobs
+      responses:
+        "200":
+          description: Recruiter jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+
+  /recruiter/applications:
+    get:
+      operationId: getRecruiterApplications
+      tags: [recruiter]
+      summary: Get all applications for recruiter's jobs
+      responses:
+        "200":
+          description: Applications with student info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApplicationWithStudent"
+
+  /recruiter/stats:
+    get:
+      operationId: getRecruiterStats
+      tags: [recruiter]
+      summary: Get recruiter dashboard stats
+      responses:
+        "200":
+          description: Recruiter stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecruiterStats"
+
+  /recruiter/student/{studentId}:
+    get:
+      operationId: getStudentForRecruiter
+      tags: [recruiter]
+      summary: Get a student profile (for recruiter view)
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+
+  /recruiter/applications/{applicationId}:
+    patch:
+      operationId: updateApplicationStatus
+      tags: [recruiter]
+      summary: Update application status
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationStatusInput"
+      responses:
+        "200":
+          description: Updated application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+
+  # ── AI ────────────────────────────────────────────────────────────────────
+  /ai/analyze/{studentId}:
+    post:
+      operationId: analyzeStudent
+      tags: [ai]
+      summary: Trigger AI verification for a student
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: AI verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIVerificationResult"
+
+  /ai/result/{studentId}:
+    get:
+      operationId: getAIResult
+      tags: [ai]
+      summary: Get latest AI verification result for a student
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: AI result or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIVerificationResult"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
-        status:
-          type: string
-      required:
-        - status
+        status: { type: string }
 
+    # ── AUTH ────────────────────────────────────────────────────────────────
+    UserSyncInput:
+      type: object
+      required: [clerkId, email, role, displayName]
+      properties:
+        clerkId: { type: string }
+        email: { type: string }
+        role: { type: string }
+        displayName: { type: string }
+        companyName: { type: ["string", "null"] }
+
+    UserSyncResult:
+      type: object
+      required: [userId, role]
+      properties:
+        userId: { type: integer }
+        role: { type: string }
+
+    UserProfile:
+      type: object
+      required: [id, clerkId, email, role, displayName, createdAt]
+      properties:
+        id: { type: integer }
+        clerkId: { type: string }
+        email: { type: string }
+        role: { type: string }
+        displayName: { type: string }
+        companyName: { type: ["string", "null"] }
+        college: { type: ["string", "null"] }
+        skills: { type: array, items: { type: string } }
+        linkedinUrl: { type: ["string", "null"] }
+        githubUrl: { type: ["string", "null"] }
+        portfolioUrl: { type: ["string", "null"] }
+        resumeUrl: { type: ["string", "null"] }
+        resumeFilename: { type: ["string", "null"] }
+        photoUrl: { type: ["string", "null"] }
+        appliedJobIds: { type: array, items: { type: integer } }
+        createdAt: { type: string }
+
+    # ── JOBS ────────────────────────────────────────────────────────────────
+    Job:
+      type: object
+      required: [id, title, description, company, location, jobType, skills, recruiterId, postedAt, isActive, applicantCount]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        company: { type: string }
+        location: { type: string }
+        jobType: { type: string }
+        salary: { type: ["string", "null"] }
+        skills: { type: array, items: { type: string } }
+        recruiterId: { type: integer }
+        postedAt: { type: string }
+        isActive: { type: boolean }
+        applicantCount: { type: integer }
+
+    JobInput:
+      type: object
+      required: [title, description, company, location, jobType, skills]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        company: { type: string }
+        location: { type: string }
+        jobType: { type: string }
+        salary: { type: ["string", "null"] }
+        skills: { type: array, items: { type: string } }
+
+    JobFilters:
+      type: object
+      required: [skills, jobTypes]
+      properties:
+        skills: { type: array, items: { type: string } }
+        jobTypes: { type: array, items: { type: string } }
+
+    Application:
+      type: object
+      required: [id, jobId, studentId, status, appliedAt]
+      properties:
+        id: { type: integer }
+        jobId: { type: integer }
+        studentId: { type: integer }
+        status: { type: string }
+        appliedAt: { type: string }
+        job:
+          $ref: "#/components/schemas/Job"
+
+    ApplicationWithStudent:
+      type: object
+      required: [id, jobId, studentId, status, appliedAt]
+      properties:
+        id: { type: integer }
+        jobId: { type: integer }
+        studentId: { type: integer }
+        status: { type: string }
+        appliedAt: { type: string }
+        student:
+          $ref: "#/components/schemas/StudentProfile"
+        job:
+          $ref: "#/components/schemas/Job"
+
+    ApplicationStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+
+    # ── STUDENT ─────────────────────────────────────────────────────────────
+    StudentProfile:
+      type: object
+      required: [id, displayName, email, role, createdAt]
+      properties:
+        id: { type: integer }
+        displayName: { type: string }
+        email: { type: string }
+        role: { type: string }
+        college: { type: ["string", "null"] }
+        skills: { type: array, items: { type: string } }
+        linkedinUrl: { type: ["string", "null"] }
+        githubUrl: { type: ["string", "null"] }
+        portfolioUrl: { type: ["string", "null"] }
+        resumeUrl: { type: ["string", "null"] }
+        resumeFilename: { type: ["string", "null"] }
+        photoUrl: { type: ["string", "null"] }
+        appliedJobIds: { type: array, items: { type: integer } }
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+        createdAt: { type: string }
+
+    StudentProfileInput:
+      type: object
+      properties:
+        displayName: { type: string }
+        college: { type: ["string", "null"] }
+        skills: { type: array, items: { type: string } }
+        linkedinUrl: { type: ["string", "null"] }
+        githubUrl: { type: ["string", "null"] }
+        portfolioUrl: { type: ["string", "null"] }
+
+    StudentStats:
+      type: object
+      required: [totalApplications, pendingApplications, shortlistedApplications, profileCompletion]
+      properties:
+        totalApplications: { type: integer }
+        pendingApplications: { type: integer }
+        shortlistedApplications: { type: integer }
+        profileCompletion: { type: integer }
+        recentApplications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+
+    Certificate:
+      type: object
+      required: [id, filename, url, uploadedAt]
+      properties:
+        id: { type: integer }
+        filename: { type: string }
+        url: { type: string }
+        uploadedAt: { type: string }
+
+    # ── RECRUITER ───────────────────────────────────────────────────────────
+    RecruiterProfile:
+      type: object
+      required: [id, displayName, email, role, createdAt]
+      properties:
+        id: { type: integer }
+        displayName: { type: string }
+        email: { type: string }
+        role: { type: string }
+        companyName: { type: ["string", "null"] }
+        photoUrl: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    RecruiterProfileInput:
+      type: object
+      properties:
+        displayName: { type: string }
+        companyName: { type: ["string", "null"] }
+
+    RecruiterStats:
+      type: object
+      required: [totalJobs, totalApplications, pendingApplications, shortlistedApplications]
+      properties:
+        totalJobs: { type: integer }
+        totalApplications: { type: integer }
+        pendingApplications: { type: integer }
+        shortlistedApplications: { type: integer }
+        recentApplications:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicationWithStudent"
+
+    # ── AI ──────────────────────────────────────────────────────────────────
+    AICheckResult:
+      type: object
+      required: [status, detail]
+      properties:
+        status: { type: string }
+        detail: { type: string }
+
+    AIVerificationResult:
+      type: object
+      required: [id, studentId, trustScore, verdict, summary, analyzedAt]
+      properties:
+        id: { type: integer }
+        studentId: { type: integer }
+        trustScore: { type: integer }
+        verdict: { type: string }
+        summary: { type: string }
+        strengths: { type: array, items: { type: string } }
+        redFlags: { type: array, items: { type: string } }
+        educationCheck:
+          $ref: "#/components/schemas/AICheckResult"
+        experienceCheck:
+          $ref: "#/components/schemas/AICheckResult"
+        githubCheck:
+          $ref: "#/components/schemas/AICheckResult"
+        certificatesCheck:
+          $ref: "#/components/schemas/AICheckResult"
+        recommendation: { type: string }
+        analyzedAt: { type: string }

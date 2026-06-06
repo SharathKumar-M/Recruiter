@@ -1,0 +1,3 @@
+- [Drizzle ORM dedup override](drizzle-dedup.md) — two drizzle-orm copies cause SQL<unknown> type conflicts; force single version in pnpm-workspace.yaml overrides.
+- [AI SDK v6 token param](ai-sdk-v6.md) — generateText uses `maxOutputTokens`, not `maxTokens`; Express 5 params need `as string` cast before parseInt.
+- [Clerk + Zustand role flow](clerk-role-flow.md) — role chosen before Clerk sign-up, stored in Zustand persist, synced to DB via POST /api/auth/sync after auth.

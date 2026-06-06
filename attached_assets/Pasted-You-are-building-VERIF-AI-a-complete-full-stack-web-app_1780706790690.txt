@@ -1,0 +1,1196 @@
+You are building VERIF-AI — a complete full-stack web application.
+A job platform where students upload their profiles and recruiters can verify
+them using AI agents that check if resumes, certificates, and GitHub profiles are authentic.
+
+Build the ENTIRE application: frontend + backend + database + AI agents.
+Everything must be fully functional and working.
+
+==============================================================
+SECTION 1 — PROJECT OVERVIEW
+==============================================================
+
+WHAT THIS APP DOES:
+- Students register, upload resume + certificates + GitHub + LinkedIn + portfolio
+- Recruiters post jobs (visible to students) and view who applied
+- When a recruiter views a student's profile, they can trigger an AI agent
+- The AI agent searches the web, scrapes GitHub, checks LinkedIn, cross-references
+  certificates and resume claims, then generates a Trust Score (0–100) and a detailed
+  report explaining what is authentic and what appears fake or unverifiable
+
+TWO ROLES:
+1. STUDENT — searches jobs, applies, manages their profile + documents
+2. RECRUITER — posts jobs, views applicants, runs AI verification on any student
+
+==============================================================
+SECTION 2 — TECH STACK (USE EXACTLY THESE)
+==============================================================
+
+FRONTEND:
+- React 18 + TypeScript + Vite
+- Tailwind CSS v3
+- React Router v6
+- Zustand (state management)
+- Axios (HTTP client)
+- React Hook Form + Zod (forms + validation)
+- Lucide React (icons)
+- React Hot Toast (notifications)
+- React Dropzone (file uploads)
+- Google Fonts: "DM Sans" (headings) + "Lato" (body)
+
+BACKEND:
+- Python 3.11 + FastAPI
+- Uvicorn (server)
+- Motor (async MongoDB driver)
+- Firebase Admin SDK (auth token verification)
+- LangChain + LangGraph (AI agent framework)
+- langchain-google-genai (Gemini 2.0 Flash as LLM)
+- Tavily (web search tool for AI agent)
+- PyGithub (GitHub API scraping)
+- pdfplumber (PDF text extraction)
+- Pillow + python-magic (file validation)
+- python-multipart (file uploads)
+- httpx (async HTTP)
+- python-dotenv (env vars)
+- bcrypt + python-jose (password backup, not primary auth)
+
+DATABASE:
+- MongoDB Atlas (free tier) — primary database
+  Collections: users, jobs, applications, documents, verifications, research_logs
+- Firebase Authentication — handles login/register/JWT tokens
+- Cloudinary — stores uploaded files (resume PDFs, certificate images, profile photos)
+
+AI AGENT STACK:
+- LangGraph (multi-step agent with tools)
+- Gemini 2.0 Flash via langchain-google-genai
+- Tavily Search API (web search)
+- PyGithub (GitHub profile + repo analysis)
+- pdfplumber (resume text extraction)
+- Custom certificate verification logic
+
+==============================================================
+SECTION 3 — ENVIRONMENT VARIABLES
+==============================================================
+
+Create .env in backend root:
+
+# MongoDB
+MONGODB_URI=mongodb+srv://verifai:verifai2024@cluster0.mongodb.net/verifai?retryWrites=true&w=majority
+MONGODB_DB_NAME=verifai
+
+# Firebase
+FIREBASE_PROJECT_ID=verifai-app
+FIREBASE_CREDENTIALS_JSON={"type":"service_account","project_id":"verifai-app","private_key_id":"key123","private_key":"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...","client_email":"firebase-adminsdk@verifai-app.iam.gserviceaccount.com","client_id":"123456789","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk%40verifai-app.iam.gserviceaccount.com"}
+
+# Google AI (Gemini)
+GEMINI_API_KEY=AIzaSyD_PLACEHOLDER_REPLACE_WITH_REAL_KEY
+GOOGLE_API_KEY=AIzaSyD_PLACEHOLDER_REPLACE_WITH_REAL_KEY
+
+# Tavily (web search for AI agent)
+TAVILY_API_KEY=tvly-PLACEHOLDER_REPLACE_WITH_REAL_KEY
+
+# GitHub (for scraping public profiles)
+GITHUB_TOKEN=ghp_PLACEHOLDER_REPLACE_WITH_REAL_TOKEN
+
+# Cloudinary (file storage)
+CLOUDINARY_CLOUD_NAME=verifai
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=PLACEHOLDER_REPLACE_WITH_REAL_SECRET
+
+# App
+ALLOWED_ORIGINS=http://localhost:5173,https://verifai.replit.app
+PORT=8000
+ENVIRONMENT=development
+
+Create .env.local in frontend root:
+
+VITE_FIREBASE_API_KEY=AIzaSyD_PLACEHOLDER_REPLACE_WITH_REAL_KEY
+VITE_FIREBASE_AUTH_DOMAIN=verifai-app.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=verifai-app
+VITE_API_BASE_URL=http://localhost:8000
+
+NOTE TO REPLIT: Generate real working API keys by:
+1. Create MongoDB Atlas free cluster → get connection string
+2. Create Firebase project → enable Email/Password auth → download service account JSON
+3. Get Gemini API key from aistudio.google.com (free)
+4. Get Tavily API key from tavily.com (free tier: 1000 searches/month)
+5. Create GitHub Personal Access Token (public_repo scope)
+6. Create Cloudinary free account → get cloud name + API key + secret
+Replace all PLACEHOLDER values above with real generated keys.
+
+==============================================================
+SECTION 4 — COMPLETE BACKEND
+==============================================================
+
+--- FILE: backend/requirements.txt ---
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+motor==3.4.0
+firebase-admin==6.4.0
+langchain==0.2.6
+langgraph==0.1.5
+langchain-google-genai==1.0.6
+langchain-community==0.2.6
+tavily-python==0.3.3
+PyGithub==2.3.0
+pdfplumber==0.11.0
+Pillow==10.3.0
+python-magic==0.4.27
+python-multipart==0.0.9
+httpx==0.27.0
+python-dotenv==1.0.1
+cloudinary==1.40.0
+bcrypt==4.1.3
+python-jose[cryptography]==3.3.0
+pydantic==2.7.1
+beanie==1.26.0
+
+--- FILE: backend/app/core/config.py ---
+from pydantic_settings import BaseSettings
+import json, os
+
+class Settings(BaseSettings):
+    MONGODB_URI: str
+    MONGODB_DB_NAME: str = "verifai"
+    FIREBASE_PROJECT_ID: str
+    FIREBASE_CREDENTIALS_JSON: str
+    GEMINI_API_KEY: str
+    TAVILY_API_KEY: str
+    GITHUB_TOKEN: str
+    CLOUDINARY_CLOUD_NAME: str
+    CLOUDINARY_API_KEY: str
+    CLOUDINARY_API_SECRET: str
+    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    PORT: int = 8000
+    ENVIRONMENT: str = "development"
+
+    @property
+    def firebase_credentials_dict(self) -> dict:
+        return json.loads(self.FIREBASE_CREDENTIALS_JSON)
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return self.ALLOWED_ORIGINS.split(",")
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+--- FILE: backend/app/core/database.py ---
+from motor.motor_asyncio import AsyncIOMotorClient
+from app.core.config import settings
+
+client: AsyncIOMotorClient = None
+db = None
+
+async def connect_db():
+    global client, db
+    client = AsyncIOMotorClient(settings.MONGODB_URI)
+    db = client[settings.MONGODB_DB_NAME]
+    # Create indexes
+    await db.users.create_index("firebase_uid", unique=True)
+    await db.users.create_index("email", unique=True)
+    await db.jobs.create_index("recruiter_uid")
+    await db.applications.create_index([("job_id", 1), ("student_uid", 1)], unique=True)
+    await db.verifications.create_index("student_uid")
+    print("Connected to MongoDB")
+
+async def close_db():
+    if client:
+        client.close()
+
+def get_db():
+    return db
+
+--- FILE: backend/app/core/firebase.py ---
+import firebase_admin
+from firebase_admin import credentials, auth
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.core.config import settings
+import json
+
+def init_firebase():
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(settings.firebase_credentials_dict)
+        firebase_admin.initialize_app(cred)
+
+bearer = HTTPBearer()
+
+async def verify_token(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> dict:
+    try:
+        decoded = auth.verify_id_token(creds.credentials)
+        return decoded
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
+async def require_student(user: dict = Depends(verify_token)) -> dict:
+    if user.get("role") != "student":
+        raise HTTPException(status_code=403, detail="Students only")
+    return user
+
+async def require_recruiter(user: dict = Depends(verify_token)) -> dict:
+    if user.get("role") != "recruiter":
+        raise HTTPException(status_code=403, detail="Recruiters only")
+    return user
+
+--- FILE: backend/app/core/cloudinary_setup.py ---
+import cloudinary
+import cloudinary.uploader
+from app.core.config import settings
+
+def init_cloudinary():
+    cloudinary.config(
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+        api_key=settings.CLOUDINARY_API_KEY,
+        api_secret=settings.CLOUDINARY_API_SECRET
+    )
+
+async def upload_file(file_bytes: bytes, filename: str, folder: str, resource_type: str = "auto") -> str:
+    result = cloudinary.uploader.upload(
+        file_bytes,
+        folder=f"verifai/{folder}",
+        public_id=filename,
+        resource_type=resource_type
+    )
+    return result["secure_url"]
+
+--- FILE: backend/app/models/user.py ---
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
+from datetime import datetime
+
+class UserCreate(BaseModel):
+    firebase_uid: str
+    email: EmailStr
+    role: str  # "student" or "recruiter"
+    display_name: str
+    company_name: Optional[str] = None  # recruiter only
+
+class StudentProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    college: Optional[str] = None
+    skills: Optional[List[str]] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+
+class RecruiterProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    company_name: Optional[str] = None
+
+--- FILE: backend/app/models/job.py ---
+from pydantic import BaseModel
+from typing import Optional, List
+
+class JobCreate(BaseModel):
+    title: str
+    description: str
+    company: str
+    location: str
+    job_type: str  # "Remote" | "Hybrid" | "On-site"
+    salary: Optional[str] = None
+    skills: List[str]
+
+class JobUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    job_type: Optional[str] = None
+    salary: Optional[str] = None
+    skills: Optional[List[str]] = None
+
+--- FILE: backend/app/api/v1/auth.py ---
+from fastapi import APIRouter, HTTPException, Depends
+from app.core.database import get_db
+from app.core.firebase import verify_token
+from app.models.user import UserCreate
+from datetime import datetime
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post("/sync")
+async def sync_user(data: UserCreate, db=Depends(get_db)):
+    existing = await db.users.find_one({"firebase_uid": data.firebase_uid})
+    if existing:
+        return {"success": True, "data": {"uid": data.firebase_uid, "role": existing["role"]}}
+    
+    user_doc = {
+        "firebase_uid": data.firebase_uid,
+        "email": data.email,
+        "role": data.role,
+        "display_name": data.display_name,
+        "company_name": data.company_name,
+        "photo_url": None,
+        "created_at": datetime.utcnow(),
+        # student fields
+        "college": None,
+        "skills": [],
+        "resume_url": None,
+        "certificates": [],
+        "linkedin_url": None,
+        "github_url": None,
+        "portfolio_url": None,
+        "applied_jobs": [],
+        # recruiter fields
+        "posted_jobs": [],
+    }
+    await db.users.insert_one(user_doc)
+    
+    # Set custom claim on Firebase token for role
+    from firebase_admin import auth as firebase_auth
+    firebase_auth.set_custom_user_claims(data.firebase_uid, {"role": data.role})
+    
+    return {"success": True, "data": {"uid": data.firebase_uid, "role": data.role}}
+
+@router.get("/me")
+async def get_me(user: dict = Depends(verify_token), db=Depends(get_db)):
+    profile = await db.users.find_one(
+        {"firebase_uid": user["uid"]},
+        {"_id": 0}
+    )
+    if not profile:
+        raise HTTPException(404, "User not found")
+    return {"success": True, "data": profile}
+
+--- FILE: backend/app/api/v1/jobs.py ---
+from fastapi import APIRouter, Depends, HTTPException
+from app.core.database import get_db
+from app.core.firebase import verify_token, require_recruiter, require_student
+from app.models.job import JobCreate
+from datetime import datetime
+from bson import ObjectId
+import json
+
+router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+def serialize(doc):
+    doc["id"] = str(doc.pop("_id"))
+    return doc
+
+@router.get("")
+async def get_jobs(search: str = "", skills: str = "", roles: str = "", db=Depends(get_db)):
+    query = {"is_active": True}
+    if search:
+        query["$or"] = [
+            {"title": {"$regex": search, "$options": "i"}},
+            {"company": {"$regex": search, "$options": "i"}},
+            {"description": {"$regex": search, "$options": "i"}},
+        ]
+    if skills:
+        skill_list = [s.strip() for s in skills.split(",")]
+        query["skills"] = {"$in": skill_list}
+    if roles:
+        role_list = [r.strip() for r in roles.split(",")]
+        query["job_type"] = {"$in": role_list}
+    
+    jobs = await db.jobs.find(query).sort("posted_at", -1).to_list(50)
+    return {"success": True, "data": [serialize(j) for j in jobs]}
+
+@router.get("/filters")
+async def get_filters(db=Depends(get_db)):
+    jobs = await db.jobs.find({"is_active": True}).to_list(500)
+    all_skills = set()
+    all_types = set()
+    for job in jobs:
+        all_skills.update(job.get("skills", []))
+        if job.get("job_type"):
+            all_types.add(job["job_type"])
+    return {"success": True, "data": {"skills": list(all_skills), "roles": list(all_types)}}
+
+@router.post("")
+async def create_job(job: JobCreate, user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    doc = job.dict()
+    doc["recruiter_uid"] = user["uid"]
+    doc["posted_at"] = datetime.utcnow()
+    doc["is_active"] = True
+    doc["applicant_count"] = 0
+    result = await db.jobs.insert_one(doc)
+    await db.users.update_one(
+        {"firebase_uid": user["uid"]},
+        {"$push": {"posted_jobs": str(result.inserted_id)}}
+    )
+    doc["id"] = str(result.inserted_id)
+    doc.pop("_id", None)
+    return {"success": True, "data": doc}
+
+@router.post("/{job_id}/apply")
+async def apply_to_job(job_id: str, user: dict = Depends(require_student), db=Depends(get_db)):
+    existing = await db.applications.find_one({"job_id": job_id, "student_uid": user["uid"]})
+    if existing:
+        raise HTTPException(400, "Already applied")
+    
+    app_doc = {
+        "job_id": job_id,
+        "student_uid": user["uid"],
+        "applied_at": datetime.utcnow(),
+        "status": "pending"
+    }
+    await db.applications.insert_one(app_doc)
+    await db.jobs.update_one({"_id": ObjectId(job_id)}, {"$inc": {"applicant_count": 1}})
+    await db.users.update_one(
+        {"firebase_uid": user["uid"]},
+        {"$addToSet": {"applied_jobs": job_id}}
+    )
+    return {"success": True, "data": {"message": "Applied successfully"}}
+
+@router.get("/my-applications")
+async def my_applications(user: dict = Depends(require_student), db=Depends(get_db)):
+    apps = await db.applications.find({"student_uid": user["uid"]}).to_list(100)
+    return {"success": True, "data": [serialize(a) for a in apps]}
+
+--- FILE: backend/app/api/v1/student.py ---
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from app.core.database import get_db
+from app.core.firebase import require_student
+from app.core.cloudinary_setup import upload_file
+from app.models.user import StudentProfileUpdate
+from datetime import datetime
+import io
+
+router = APIRouter(prefix="/student", tags=["student"])
+
+@router.get("/profile")
+async def get_profile(user: dict = Depends(require_student), db=Depends(get_db)):
+    profile = await db.users.find_one({"firebase_uid": user["uid"]}, {"_id": 0})
+    return {"success": True, "data": profile}
+
+@router.put("/profile")
+async def update_profile(data: StudentProfileUpdate, user: dict = Depends(require_student), db=Depends(get_db)):
+    update = {k: v for k, v in data.dict().items() if v is not None}
+    if update:
+        await db.users.update_one({"firebase_uid": user["uid"]}, {"$set": update})
+    profile = await db.users.find_one({"firebase_uid": user["uid"]}, {"_id": 0})
+    return {"success": True, "data": profile}
+
+@router.post("/upload-photo")
+async def upload_photo(file: UploadFile = File(...), user: dict = Depends(require_student), db=Depends(get_db)):
+    if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(400, "Only JPG/PNG/WebP images allowed")
+    content = await file.read()
+    url = await upload_file(content, f"photo_{user['uid']}", "photos", "image")
+    await db.users.update_one({"firebase_uid": user["uid"]}, {"$set": {"photo_url": url}})
+    return {"success": True, "data": {"photo_url": url}}
+
+@router.post("/upload-resume")
+async def upload_resume(file: UploadFile = File(...), user: dict = Depends(require_student), db=Depends(get_db)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(400, "Only PDF files allowed for resume")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 10MB)")
+    url = await upload_file(content, f"resume_{user['uid']}", "resumes", "raw")
+    await db.users.update_one(
+        {"firebase_uid": user["uid"]},
+        {"$set": {"resume_url": url, "resume_filename": file.filename, "resume_uploaded_at": datetime.utcnow()}}
+    )
+    return {"success": True, "data": {"resume_url": url, "filename": file.filename}}
+
+@router.post("/upload-certificate")
+async def upload_certificate(file: UploadFile = File(...), user: dict = Depends(require_student), db=Depends(get_db)):
+    allowed = ["application/pdf", "image/jpeg", "image/png"]
+    if file.content_type not in allowed:
+        raise HTTPException(400, "Only PDF/JPG/PNG allowed for certificates")
+    content = await file.read()
+    url = await upload_file(content, f"cert_{user['uid']}_{datetime.utcnow().timestamp()}", "certificates", "auto")
+    cert_doc = {
+        "url": url,
+        "filename": file.filename,
+        "uploaded_at": datetime.utcnow().isoformat()
+    }
+    await db.users.update_one(
+        {"firebase_uid": user["uid"]},
+        {"$push": {"certificates": cert_doc}}
+    )
+    return {"success": True, "data": cert_doc}
+
+--- FILE: backend/app/api/v1/recruiter.py ---
+from fastapi import APIRouter, Depends
+from app.core.database import get_db
+from app.core.firebase import require_recruiter
+from app.models.user import RecruiterProfileUpdate
+from bson import ObjectId
+
+router = APIRouter(prefix="/recruiter", tags=["recruiter"])
+
+def serialize(doc):
+    if "_id" in doc:
+        doc["id"] = str(doc.pop("_id"))
+    return doc
+
+@router.get("/profile")
+async def get_profile(user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    profile = await db.users.find_one({"firebase_uid": user["uid"]}, {"_id": 0})
+    return {"success": True, "data": profile}
+
+@router.put("/profile")
+async def update_profile(data: RecruiterProfileUpdate, user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    update = {k: v for k, v in data.dict().items() if v is not None}
+    if update:
+        await db.users.update_one({"firebase_uid": user["uid"]}, {"$set": update})
+    profile = await db.users.find_one({"firebase_uid": user["uid"]}, {"_id": 0})
+    return {"success": True, "data": profile}
+
+@router.get("/applications")
+async def get_applications(user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    recruiter = await db.users.find_one({"firebase_uid": user["uid"]})
+    job_ids = recruiter.get("posted_jobs", [])
+    if not job_ids:
+        return {"success": True, "data": []}
+    
+    apps = await db.applications.find({"job_id": {"$in": job_ids}}).sort("applied_at", -1).to_list(200)
+    result = []
+    for app in apps:
+        student = await db.users.find_one({"firebase_uid": app["student_uid"]}, {"_id": 0})
+        app["student"] = student
+        result.append(serialize(app))
+    return {"success": True, "data": result}
+
+@router.get("/student/{student_uid}")
+async def get_student(student_uid: str, user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    student = await db.users.find_one({"firebase_uid": student_uid, "role": "student"}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"success": True, "data": student}
+
+@router.put("/applications/{app_id}")
+async def update_status(app_id: str, body: dict, user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    await db.applications.update_one(
+        {"_id": ObjectId(app_id)},
+        {"$set": {"status": body.get("status")}}
+    )
+    return {"success": True, "data": {"message": "Status updated"}}
+
+@router.get("/jobs")
+async def get_my_jobs(user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    jobs = await db.jobs.find({"recruiter_uid": user["uid"]}).sort("posted_at", -1).to_list(100)
+    return {"success": True, "data": [serialize(j) for j in jobs]}
+
+--- FILE: backend/app/services/ai_agent.py ---
+"""
+VERIF-AI — LangGraph AI Verification Agent
+
+This agent:
+1. Extracts text from the student's resume PDF
+2. Scrapes their GitHub profile and repositories
+3. Searches the web for their LinkedIn, certificates, companies mentioned
+4. Cross-references all claims — education, work experience, certifications
+5. Detects inconsistencies and potential fakes
+6. Generates a Trust Score (0–100) and detailed report
+"""
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain.tools import tool
+from langchain_core.prompts import PromptTemplate
+from github import Github
+import pdfplumber
+import httpx
+import json
+import re
+from typing import Optional
+from app.core.config import settings
+
+# Initialize LLM
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    google_api_key=settings.GEMINI_API_KEY,
+    temperature=0.1
+)
+
+# Initialize GitHub client
+gh = Github(settings.GITHUB_TOKEN)
+
+# Initialize web search tool
+tavily_search = TavilySearchResults(
+    api_key=settings.TAVILY_API_KEY,
+    max_results=5
+)
+
+
+async def extract_resume_text(resume_url: str) -> str:
+    """Download and extract text from a resume PDF URL."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(resume_url)
+            pdf_bytes = response.content
+        
+        import io
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            text = ""
+            for page in pdf.pages:
+                text += page.extract_text() or ""
+        return text[:8000]  # limit to 8000 chars
+    except Exception as e:
+        return f"Could not extract resume text: {str(e)}"
+
+
+def analyze_github_profile(github_url: str) -> dict:
+    """Scrape and analyze a GitHub profile."""
+    try:
+        username = github_url.rstrip("/").split("/")[-1]
+        user = gh.get_user(username)
+        
+        repos = list(user.get_repos())[:20]
+        repo_data = []
+        for repo in repos:
+            if not repo.fork:
+                repo_data.append({
+                    "name": repo.name,
+                    "description": repo.description,
+                    "stars": repo.stargazers_count,
+                    "language": repo.language,
+                    "created": str(repo.created_at.date()),
+                    "last_commit": str(repo.pushed_at.date()) if repo.pushed_at else None,
+                    "commits_count": repo.get_commits().totalCount if repo.size > 0 else 0
+                })
+        
+        return {
+            "username": username,
+            "name": user.name,
+            "bio": user.bio,
+            "company": user.company,
+            "location": user.location,
+            "followers": user.followers,
+            "following": user.following,
+            "public_repos": user.public_repos,
+            "account_created": str(user.created_at.date()),
+            "repos": repo_data[:10]
+        }
+    except Exception as e:
+        return {"error": str(e), "username": github_url}
+
+
+def run_verification_agent(
+    student_name: str,
+    resume_text: str,
+    github_data: dict,
+    certificates: list,
+    linkedin_url: Optional[str],
+    portfolio_url: Optional[str]
+) -> dict:
+    """
+    Run the LangGraph verification agent to analyze all student data
+    and produce a trust score + detailed report.
+    """
+    
+    # Build context for the agent
+    context = f"""
+STUDENT PROFILE TO VERIFY:
+Name: {student_name}
+
+=== RESUME TEXT ===
+{resume_text}
+
+=== GITHUB PROFILE ===
+{json.dumps(github_data, indent=2)}
+
+=== CERTIFICATES ===
+{json.dumps(certificates, indent=2)}
+
+=== LINKEDIN URL ===
+{linkedin_url or 'Not provided'}
+
+=== PORTFOLIO URL ===
+{portfolio_url or 'Not provided'}
+"""
+    
+    VERIFICATION_PROMPT = """You are VERIF-AI, an expert AI agent specialized in verifying student profiles for recruiters.
+
+Your job is to thoroughly verify the authenticity of a student's claims by:
+1. Analyzing their resume text for claims (education, work experience, skills, projects)
+2. Cross-referencing GitHub activity with skills claimed in resume
+3. Searching the web to verify companies, colleges, certifications mentioned
+4. Checking if certificates are from legitimate institutions
+5. Looking for inconsistencies between different sources
+6. Detecting signs of fake or inflated claims
+
+You have access to:
+- web_search: Search the internet for verification
+
+STUDENT DATA TO VERIFY:
+{context}
+
+VERIFICATION METHODOLOGY:
+- For each company/employer mentioned: search web to verify it exists and the role is plausible
+- For each educational institution: verify it exists and offers the mentioned degree
+- For certificates: verify the issuing organization is legitimate and offers that certificate
+- For skills claimed: cross-reference with GitHub repos (languages used, project complexity)
+- For GitHub activity: check account age, commit frequency, repo authenticity
+- Look for: dates that don't add up, claimed skills not reflected in GitHub, certificates from non-existent organizations, copy-pasted project descriptions
+
+TOOLS AVAILABLE:
+{tools}
+
+Use the following format:
+Thought: What do I need to verify?
+Action: web_search
+Action Input: specific search query
+Observation: search results
+... (repeat Thought/Action/Observation as needed)
+Thought: I now have enough information to generate the final report
+Final Answer: [JSON with the verification results]
+
+IMPORTANT: Your Final Answer must be ONLY a valid JSON object in this exact format:
+{{
+  "trust_score": <number 0-100>,
+  "verdict": "<AUTHENTIC | LIKELY_AUTHENTIC | SUSPICIOUS | FAKE>",
+  "summary": "<2-3 sentence overall summary>",
+  "strengths": ["<verified claim 1>", "<verified claim 2>"],
+  "red_flags": ["<suspicious item 1>", "<suspicious item 2>"],
+  "education_check": {{
+    "status": "<VERIFIED | UNVERIFIED | SUSPICIOUS>",
+    "detail": "<what was found>"
+  }},
+  "experience_check": {{
+    "status": "<VERIFIED | UNVERIFIED | SUSPICIOUS>",
+    "detail": "<what was found>"
+  }},
+  "github_check": {{
+    "status": "<AUTHENTIC | SUSPICIOUS | NO_ACTIVITY>",
+    "detail": "<analysis of GitHub profile authenticity>"
+  }},
+  "certificates_check": {{
+    "status": "<VERIFIED | SUSPICIOUS | FAKE>",
+    "detail": "<certificate verification findings>"
+  }},
+  "recommendation": "<specific advice for recruiter>"
+}}
+
+{agent_scratchpad}"""
+
+    tools = [tavily_search]
+    
+    prompt = PromptTemplate.from_template(VERIFICATION_PROMPT)
+    
+    agent = create_react_agent(llm, tools, prompt)
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        max_iterations=8,
+        handle_parsing_errors=True
+    )
+    
+    try:
+        result = executor.invoke({"context": context})
+        output = result.get("output", "{}")
+        
+        # Extract JSON from output
+        json_match = re.search(r'\{.*\}', output, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        else:
+            # Fallback if JSON parsing fails
+            return {
+                "trust_score": 50,
+                "verdict": "UNVERIFIED",
+                "summary": output[:500],
+                "strengths": [],
+                "red_flags": ["Could not complete full analysis"],
+                "education_check": {"status": "UNVERIFIED", "detail": "Analysis incomplete"},
+                "experience_check": {"status": "UNVERIFIED", "detail": "Analysis incomplete"},
+                "github_check": {"status": "NO_ACTIVITY", "detail": "Analysis incomplete"},
+                "certificates_check": {"status": "UNVERIFIED", "detail": "Analysis incomplete"},
+                "recommendation": "Manual review recommended due to incomplete analysis"
+            }
+    except Exception as e:
+        return {
+            "trust_score": 0,
+            "verdict": "ERROR",
+            "summary": f"Analysis failed: {str(e)}",
+            "strengths": [],
+            "red_flags": [f"Agent error: {str(e)}"],
+            "education_check": {"status": "UNVERIFIED", "detail": "Error"},
+            "experience_check": {"status": "UNVERIFIED", "detail": "Error"},
+            "github_check": {"status": "NO_ACTIVITY", "detail": "Error"},
+            "certificates_check": {"status": "UNVERIFIED", "detail": "Error"},
+            "recommendation": "Please try again"
+        }
+
+--- FILE: backend/app/api/v1/ai.py ---
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from app.core.database import get_db
+from app.core.firebase import require_recruiter
+from app.services.ai_agent import extract_resume_text, analyze_github_profile, run_verification_agent
+from datetime import datetime
+import asyncio
+
+router = APIRouter(prefix="/ai", tags=["ai"])
+
+@router.post("/analyze/{student_uid}")
+async def analyze_student(
+    student_uid: str,
+    user: dict = Depends(require_recruiter),
+    db=Depends(get_db)
+):
+    student = await db.users.find_one({"firebase_uid": student_uid, "role": "student"}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student not found")
+    
+    # Extract resume text
+    resume_text = "No resume uploaded"
+    if student.get("resume_url"):
+        resume_text = await extract_resume_text(student["resume_url"])
+    
+    # Analyze GitHub
+    github_data = {"error": "No GitHub URL provided"}
+    if student.get("github_url"):
+        github_data = analyze_github_profile(student["github_url"])
+    
+    # Run AI verification agent (sync in thread to not block event loop)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        run_verification_agent,
+        student.get("display_name", "Unknown"),
+        resume_text,
+        github_data,
+        student.get("certificates", []),
+        student.get("linkedin_url"),
+        student.get("portfolio_url")
+    )
+    
+    # Save result to database
+    verification_doc = {
+        "student_uid": student_uid,
+        "recruiter_uid": user["uid"],
+        "result": result,
+        "analyzed_at": datetime.utcnow()
+    }
+    await db.verifications.insert_one(verification_doc)
+    
+    return {"success": True, "data": result}
+
+@router.get("/result/{student_uid}")
+async def get_latest_result(student_uid: str, user: dict = Depends(require_recruiter), db=Depends(get_db)):
+    result = await db.verifications.find_one(
+        {"student_uid": student_uid},
+        {"_id": 0},
+        sort=[("analyzed_at", -1)]
+    )
+    if not result:
+        return {"success": True, "data": None}
+    return {"success": True, "data": result["result"]}
+
+--- FILE: backend/app/main.py ---
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from app.core.config import settings
+from app.core.database import connect_db, close_db
+from app.core.firebase import init_firebase
+from app.core.cloudinary_setup import init_cloudinary
+from app.api.v1 import auth, jobs, student, recruiter, ai
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_db()
+    init_firebase()
+    init_cloudinary()
+    yield
+    await close_db()
+
+app = FastAPI(title="VERIF-AI API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(student.router, prefix="/api/v1")
+app.include_router(recruiter.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "VERIF-AI Backend"}
+
+--- FILE: backend/.replit ---
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+==============================================================
+SECTION 5 — COMPLETE FRONTEND
+==============================================================
+
+--- FILE: frontend/src/index.css ---
+(Use the exact CSS from the DESIGN SYSTEM section above, with DM Sans + Lato fonts)
+
+--- FILE: frontend/src/lib/firebase.ts ---
+(Standard Firebase init with VITE_ env vars for apiKey, authDomain, projectId)
+
+--- FILE: frontend/src/api/client.ts ---
+(Axios instance: baseURL=VITE_API_BASE_URL, interceptor: getIdToken() → Bearer header,
+response interceptor: throw on !success)
+
+--- FILE: frontend/src/types/index.ts ---
+(All TypeScript interfaces: AuthUser, Job, StudentProfile, RecruiterProfile, Application,
+AIAnalysisResult with trust_score, verdict, summary, strengths, red_flags,
+education_check, experience_check, github_check, certificates_check, recommendation)
+
+--- FILE: frontend/src/store/authStore.ts ---
+(Zustand: user AuthUser|null, loading bool, setUser, setLoading, clearUser)
+
+--- FILE: frontend/src/hooks/useAuth.ts ---
+(onAuthStateChanged → GET /api/v1/auth/me → setUser with role from Firebase custom claim)
+
+--- PAGES TO BUILD ---
+
+PAGE 1: LoginPage (/login)
+- Full screen bg-slate-50
+- Centered white card, rounded-2xl, shadow, max-w-md, p-8
+- VERIF-AI logo (DM Sans, indigo-600, bold) + tagline text-slate-500
+- Email + Password inputs (React Hook Form + Zod)
+- Password show/hide toggle (Eye/EyeOff lucide icons)
+- "Sign In" indigo button full width with spinner on loading
+- "Don't have an account?" → /register link
+- Firebase signInWithEmailAndPassword → GET /me → navigate by role
+
+PAGE 2: RegisterPage (/register)
+- Same card layout
+- Role selector FIRST (two cards: Student + Recruiter, click to select, indigo border when active)
+- Fields: displayName, email, password (min 8), confirmPassword
+- If recruiter: extra "Company Name" field
+- Zod .refine() for password match
+- createUserWithEmailAndPassword → POST /api/v1/auth/sync → navigate by role
+
+PAGE 3: StudentHome (/home) — STUDENT ONLY
+Layout: min-h-screen bg-slate-50
+
+TOP NAV (sticky, glass style):
+  Left: "VERIF-AI" logo indigo
+  Right: Round avatar (photo or initials, w-10 h-10) + displayName text-sm
+         Click → dropdown: "My Profile" (navigate /profile) + "Sign Out"
+         Glass dropdown: bg-white/80 backdrop-blur border border-slate-200 rounded-xl shadow-lg p-2
+
+MAIN CONTENT (max-w-5xl mx-auto px-6 pt-8):
+
+  SEARCH BAR (glass, rounded-2xl, full width):
+    Search icon + input (placeholder "Search jobs, companies, roles...") + "Search" indigo button
+    Debounce 400ms → call GET /api/v1/jobs?search=...
+
+  FILTERS BAR (glass, rounded-xl, mt-3, flex wrap):
+    Loading: skeleton chips
+    Fetch GET /api/v1/jobs/filters → render skill chips + role chips
+    Click to toggle active (indigo when active, slate when not)
+    "Clear all" when any active
+
+  SECTION HEADING: "Available Jobs" + count
+
+  JOBS GRID (grid-cols-1 md:grid-cols-2 gap-4 mt-4):
+    Fetch GET /api/v1/jobs on mount + when search/filters change
+    Loading: 4 skeleton cards (animate-pulse)
+    Each job card (fade-up stagger):
+      Company initial circle + company + job title
+      Location + job type chips
+      Skills chips
+      Salary + "Apply" button
+      Apply button: POST /api/v1/jobs/{id}/apply
+                    Disabled + "Applied ✓" if job id is in user's applied_jobs array
+
+PAGE 4: StudentProfile (/profile) — STUDENT ONLY
+Layout: max-w-2xl mx-auto px-6 py-8
+
+CARD 1 — Personal Info:
+  Round photo (w-24 h-24, initials if no photo)
+  Camera button overlay on hover → react-dropzone → POST /api/v1/student/upload-photo
+  Name input (pre-filled, editable)
+  College input (pre-filled, editable)
+  Skills multi-tag input (type + Enter to add, X to remove, shown as indigo chips)
+  "Save Changes" button → PUT /api/v1/student/profile
+
+CARD 2 — Documents:
+  Resume section:
+    If no resume: dropzone (accept PDF only, dashed border) → POST /api/v1/student/upload-resume
+    If uploaded: filename + "View" link + "Replace" button
+  
+  Certificates section:
+    Show each uploaded cert as row (filename + view link + X delete)
+    Dropzone to add more (PDF/JPG/PNG, up to 5) → POST /api/v1/student/upload-certificate
+
+CARD 3 — Links:
+  LinkedIn URL input (Linkedin icon)
+  GitHub URL input (Github icon)
+  Portfolio URL input (Globe icon, optional)
+  "Save Links" → PUT /api/v1/student/profile
+
+PAGE 5: RecruiterHome (/recruiter) — RECRUITER ONLY
+Layout: min-h-screen bg-slate-50
+
+TOP NAV (sticky, glass):
+  Left: "VERIF-AI" logo + "Recruiter Portal" text-xs text-slate-400
+  Right: Round avatar + company_name text-sm
+         Click → dropdown:
+           Company name header (non-clickable, Building2 icon, font-semibold)
+           "Post a Job" → open PostJobModal (PlusCircle icon, indigo)
+           "Sign Out"
+
+MAIN CONTENT (max-w-6xl mx-auto px-6 pt-8 flex gap-6):
+
+  LEFT PANEL (w-72 flex-shrink-0):
+    Heading "Applicants" + count badge
+    Fetch GET /api/v1/recruiter/applications on mount
+    Loading: 4 skeleton cards
+    Scrollable list of ApplicantCard components:
+      Each card: avatar + name + college text + skills chips (3 max) + status badge
+      Status colors: pending=amber, reviewed=blue, shortlisted=green, rejected=red
+      Active card (selected): border-indigo-400 bg-indigo-50/40
+    
+    Empty: "No applications yet. Post jobs to receive applications."
+
+  RIGHT PANEL (flex-1):
+    If nothing selected:
+      Center placeholder: MousePointer2 icon + "Select an applicant to view their profile"
+    
+    If selected (student_uid):
+      bg-white rounded-2xl border border-slate-200 p-6
+      
+      TWO TABS: [Profile Details] [AI Analyzer]
+      Tab style: text-sm font-medium, active = border-b-2 border-indigo-600 text-indigo-600,
+                 inactive = text-slate-400 hover:text-slate-600
+      
+      TAB 1 — Profile Details:
+        Fetch GET /api/v1/recruiter/student/{uid}
+        Large avatar (w-16 h-16) + name text-xl font-bold + college text-slate-500
+        
+        Documents section:
+          Resume: "View Resume" button (opens resume_url in new tab) or "Not uploaded"
+          Certificates: each as link chip (opens in new tab)
+        
+        Links section:
+          LinkedIn: clickable link or "Not provided"
+          GitHub: clickable link or "Not provided"
+          Portfolio: clickable link or "Not provided"
+        
+        Skills: flex wrap of indigo chips
+        
+        Status update:
+          Select dropdown (pending/reviewed/shortlisted/rejected)
+          onChange → PUT /api/v1/recruiter/applications/{app_id} {status}
+          toast.success on update
+      
+      TAB 2 — AI Analyzer:
+        CHECK if previous analysis exists: GET /api/v1/ai/result/{student_uid}
+        
+        If no previous result:
+          Brain icon + "AI Profile Analyzer" heading
+          Description: "Our AI agent searches the web, analyzes GitHub, verifies certificates
+                        and cross-references all claims to generate an authenticity report."
+          "Analyze Now" button (indigo, Sparkles icon)
+          onClick: POST /api/v1/ai/analyze/{student_uid}
+                   Show loading state with spinner + "Analyzing... This may take 30-60 seconds"
+                   On success: display result
+          
+          NOTE: The backend AI agent uses Gemini + Tavily web search to actually verify
+          all claims. This is a real API call. Display whatever the backend returns.
+        
+        If result exists:
+          Trust Score Circle (SVG ring, animated stroke-dashoffset on mount):
+            ≥75: emerald, 50-74: amber, 25-49: orange, <25: red
+            Center: score + "/100"
+          
+          Verdict badge: AUTHENTIC=green, LIKELY_AUTHENTIC=blue,
+                         SUSPICIOUS=amber, FAKE=red
+          
+          Summary paragraph (text-sm text-slate-700 mt-4 leading-relaxed)
+          
+          "Strengths" section: CheckCircle2 icon (emerald) per item
+          "Red Flags" section: AlertCircle icon (red) per item (only if any)
+          
+          Four check sections in 2x2 grid:
+            Education Check | Experience Check | GitHub Check | Certificates Check
+            Each: status badge + detail text
+          
+          Recommendation box: bg-indigo-50 border border-indigo-200 rounded-xl p-4
+            Lightbulb icon + recommendation text
+          
+          "Re-analyze" button (text-xs text-indigo-500, bottom)
+
+PAGE 6: RecruiterProfile (/recruiter/profile) — RECRUITER ONLY
+  Company info card (editable via PUT /api/v1/recruiter/profile)
+  Posted jobs list from GET /api/v1/recruiter/jobs
+  Post Job button → PostJobModal
+
+--- SHARED COMPONENTS ---
+
+PostJobModal:
+  React Hook Form + Zod
+  Fields: title, description (textarea), location, job_type (3-button toggle: Remote/Hybrid/On-site),
+          salary (optional), skills (multi-tag input same as student)
+  Submit → POST /api/v1/jobs → toast.success → close modal → refresh
+
+Button, Input, Skeleton, Avatar, Modal:
+  (Build with exact Tailwind styles as described in frontend overview)
+
+ProtectedRoute:
+  loading → full-page spinner
+  !user → /login
+  wrong role → correct home
+  correct → render
+
+==============================================================
+SECTION 6 — DESIGN SYSTEM
+==============================================================
+
+COLORS: white + slate grays as base, indigo-600 as only accent
+FONTS: DM Sans (headings), Lato (body) from Google Fonts
+GLASS: background rgba(255,255,255,0.75), backdrop-filter blur(16px), border rgba(255,255,255,0.9)
+CARDS: bg-white, border border-slate-200, rounded-2xl, hover:border-indigo-300 transition
+INPUTS: border border-slate-200, rounded-xl, focus:ring-2 focus:ring-indigo-300
+BADGES: small rounded-full pills with colored bg-*/text-*/border-*
+ANIMATIONS: fadeSlideUp keyframe, skeleton shimmer keyframe, stagger delays
+
+==============================================================
+SECTION 7 — REPLIT SETUP INSTRUCTIONS
+==============================================================
+
+This is a monorepo. Create two folders: /backend and /frontend
+
+For the Replit .replit file (root):
+run = "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload & cd frontend && npm run dev"
+
+OR set up two separate Repls:
+1. Backend Repl: Python/FastAPI
+2. Frontend Repl: React/Vite
+
+After generating all files:
+1. Install all packages (pip install -r requirements.txt && npm install)
+2. Fill in all real API keys in .env and .env.local
+3. Run backend first → test GET /health returns {"status": "ok"}
+4. Run frontend → test login works
+5. Create one student + one recruiter account
+6. Student: upload resume PDF + certificate + add GitHub URL
+7. Recruiter: post a job, then go to applicants and run AI Analysis
+
+==============================================================
+SECTION 8 — FINAL BUILD CHECKLIST
+==============================================================
+
+Build every single file. Do not skip any.
+Do not use placeholder comments like // TODO or "implement later".
+Write complete, working code for everything.
+
+After building verify:
+- [ ] Backend starts with no import errors
+- [ ] GET /health returns ok
+- [ ] POST /api/v1/auth/sync creates user in MongoDB
+- [ ] Student can login, see jobs, apply, upload resume/certs/photo
+- [ ] Recruiter can login, post jobs, see applicants, view details
+- [ ] POST /api/v1/ai/analyze/{uid} calls Gemini + Tavily and returns real JSON
+- [ ] Trust score circle animates on result display
+- [ ] All loading states show skeleton loaders
+- [ ] All errors show via toast (never alert)
+- [ ] Glass effect on nav and dropdowns
+- [ ] Mobile responsive
+- [ ] TypeScript compiles with zero errors
+- [ ] No hardcoded data anywhere
