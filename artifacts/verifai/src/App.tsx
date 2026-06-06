@@ -6,6 +6,7 @@ import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { setDemoHeader } from "@workspace/api-client-react";
 
 import { AuthGuard } from "@/components/auth-guard";
 import { Navbar } from "@/components/navbar";
@@ -142,8 +143,16 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function DemoHeaderSync() {
+  const { demoMode, role } = useAuthStore();
+  useEffect(() => {
+    setDemoHeader(demoMode && role ? role : null);
+  }, [demoMode, role]);
+  return null;
+}
+
 function HomeRedirect() {
-  const { role } = useAuthStore();
+  const { role, demoMode } = useAuthStore();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -154,7 +163,7 @@ function HomeRedirect() {
     } else {
       setLocation("/login");
     }
-  }, [role, setLocation]);
+  }, [role, setLocation, demoMode]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
@@ -180,6 +189,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <DemoHeaderSync />
         <TooltipProvider>
           <Switch>
             <Route path="/" component={HomeRedirect} />

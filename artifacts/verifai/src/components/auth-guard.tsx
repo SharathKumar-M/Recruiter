@@ -13,16 +13,18 @@ export function AuthGuard({ children, allowedRole }: AuthGuardProps) {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [, setLocation] = useLocation();
-  const { role, syncComplete, setSyncComplete } = useAuthStore();
+  const { role, syncComplete, setSyncComplete, demoMode } = useAuthStore();
   const syncUser = useSyncUser();
 
   useEffect(() => {
+    if (demoMode) return;
     if (isLoaded && !isSignedIn) {
       setLocation("/login");
     }
-  }, [isLoaded, isSignedIn, setLocation]);
+  }, [isLoaded, isSignedIn, setLocation, demoMode]);
 
   useEffect(() => {
+    if (demoMode) return;
     if (isLoaded && isSignedIn && user && role && !syncComplete) {
       syncUser.mutate(
         {
@@ -40,13 +42,19 @@ export function AuthGuard({ children, allowedRole }: AuthGuardProps) {
         }
       );
     }
-  }, [isLoaded, isSignedIn, user, role, syncComplete, syncUser, setSyncComplete]);
+  }, [isLoaded, isSignedIn, user, role, syncComplete, syncUser, setSyncComplete, demoMode]);
 
   useEffect(() => {
+    if (demoMode) return;
     if (isLoaded && isSignedIn && syncComplete && allowedRole && role !== allowedRole) {
       setLocation(role === "recruiter" ? "/recruiter" : "/home");
     }
-  }, [isLoaded, isSignedIn, syncComplete, allowedRole, role, setLocation]);
+  }, [isLoaded, isSignedIn, syncComplete, allowedRole, role, setLocation, demoMode]);
+
+  if (demoMode) {
+    if (allowedRole && role !== allowedRole) return null;
+    return <>{children}</>;
+  }
 
   if (!isLoaded || (isSignedIn && !syncComplete)) {
     return (

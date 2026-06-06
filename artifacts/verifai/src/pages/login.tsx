@@ -2,22 +2,30 @@ import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/hooks/use-auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { GraduationCap, Briefcase } from "lucide-react";
+import { GraduationCap, Briefcase, Zap } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { motion } from "framer-motion";
 
 export default function LoginPage() {
-  const { setRole } = useAuthStore();
+  const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
 
   const handleStudentLogin = () => {
+    setDemoMode(false);
     setRole("student");
     setLocation("/sign-in");
   };
 
   const handleRecruiterLogin = () => {
+    setDemoMode(false);
     setRole("recruiter");
     setLocation("/sign-in");
+  };
+
+  const handleRecruiterPreview = () => {
+    setRole("recruiter");
+    setDemoMode(true);
+    setLocation("/recruiter");
   };
 
   return (
@@ -81,7 +89,7 @@ export default function LoginPage() {
                   Hire verified talent faster with AI-powered profile analysis and trust scores.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex justify-center">
+              <CardContent className="flex flex-col gap-3">
                 <Button 
                   size="lg" 
                   variant="outline"
@@ -89,6 +97,15 @@ export default function LoginPage() {
                   onClick={handleRecruiterLogin}
                 >
                   Recruiter Login
+                </Button>
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  className="w-full h-11 gap-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border border-indigo-200"
+                  onClick={handleRecruiterPreview}
+                >
+                  <Zap className="w-4 h-4" />
+                  Preview Dashboard (Demo)
                 </Button>
               </CardContent>
               <CardFooter className="justify-center border-t bg-slate-50/50 mt-4 py-4">

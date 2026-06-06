@@ -6,6 +6,8 @@ interface AuthState {
   setRole: (role: "student" | "recruiter" | null) => void;
   syncComplete: boolean;
   setSyncComplete: (status: boolean) => void;
+  demoMode: boolean;
+  setDemoMode: (on: boolean) => void;
   logout: () => void;
 }
 
@@ -16,7 +18,9 @@ export const useAuthStore = create<AuthState>()(
       setRole: (role) => set({ role }),
       syncComplete: false,
       setSyncComplete: (syncComplete) => set({ syncComplete }),
-      logout: () => set({ role: null, syncComplete: false }),
+      demoMode: false,
+      setDemoMode: (demoMode) => set({ demoMode }),
+      logout: () => set({ role: null, syncComplete: false, demoMode: false }),
     }),
     {
       name: "verifai-auth-storage",
