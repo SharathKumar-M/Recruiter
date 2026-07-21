@@ -21,10 +21,10 @@ import RecruiterJobs from "@/pages/recruiter/jobs";
 import RecruiterProfile from "@/pages/recruiter/profile";
 import NotFound from "@/pages/not-found";
 
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-);
+const configuredClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkPubKey = configuredClerkKey
+  ? publishableKeyFromHost(window.location.hostname, configuredClerkKey)
+  : undefined;
 
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -33,10 +33,6 @@ function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
     ? path.slice(basePath.length) || "/"
     : path;
-}
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
 }
 
 const clerkAppearance = {
@@ -98,25 +94,35 @@ function SignUpPage() {
 }
 
 function RegisterStudentPage() {
-  const { setRole } = useAuthStore();
+  const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
   
   useEffect(() => {
     setRole("student");
-    setLocation("/sign-up");
-  }, [setRole, setLocation]);
+    if (!clerkPubKey) {
+      setDemoMode(true);
+      setLocation("/home");
+    } else {
+      setLocation("/sign-up");
+    }
+  }, [setRole, setDemoMode, setLocation]);
   
   return null;
 }
 
 function RegisterRecruiterPage() {
-  const { setRole } = useAuthStore();
+  const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
   
   useEffect(() => {
     setRole("recruiter");
-    setLocation("/sign-up");
-  }, [setRole, setLocation]);
+    if (!clerkPubKey) {
+      setDemoMode(true);
+      setLocation("/recruiter");
+    } else {
+      setLocation("/sign-up");
+    }
+  }, [setRole, setDemoMode, setLocation]);
   
   return null;
 }
@@ -177,6 +183,18 @@ const queryClient = new QueryClient();
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
+  if (!clerkPubKey) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <DemoHeaderSync />
+        <TooltipProvider>
+          <AppRoutes />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
@@ -191,12 +209,23 @@ function ClerkProviderWithRoutes() {
         <ClerkQueryClientCacheInvalidator />
         <DemoHeaderSync />
         <TooltipProvider>
-          <Switch>
+          <AppRoutes />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <>
+      <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/login" component={LoginPage} />
             
-            <Route path="/sign-in/*?" component={SignInPage} />
-            <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
+            <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : LoginPage} />
             <Route path="/register/student" component={RegisterStudentPage} />
             <Route path="/register/recruiter" component={RegisterRecruiterPage} />
 
@@ -251,11 +280,8 @@ function ClerkProviderWithRoutes() {
                 <NotFound />
               </div>
             </Route>
-          </Switch>
-          <Toaster />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </ClerkProvider>
+      </Switch>
+    </>
   );
 }
 

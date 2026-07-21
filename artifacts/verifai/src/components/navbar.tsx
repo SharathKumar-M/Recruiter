@@ -5,13 +5,29 @@ import { ShieldCheck, LogOut, User, Briefcase, FileText } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function Navbar() {
-  const { role, logout } = useAuthStore();
+  return import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ? <ClerkNavbar /> : <LocalNavbar />;
+}
+
+function ClerkNavbar() {
   const { signOut } = useClerk();
+  return <NavbarContent onSignOut={() => signOut({ redirectUrl: "/" })} />;
+}
+
+function LocalNavbar() {
+  return <NavbarContent />;
+}
+
+function NavbarContent({ onSignOut }: { onSignOut?: () => void }) {
+  const { role, logout } = useAuthStore();
   const [location, setLocation] = useLocation();
 
   const handleLogout = () => {
     logout();
-    signOut({ redirectUrl: "/" });
+    if (onSignOut) {
+      onSignOut();
+    } else {
+      setLocation("/");
+    }
   };
 
   return (

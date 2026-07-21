@@ -19,6 +19,8 @@ export default function StudentHome() {
   const { data: filters } = useGetJobFilters();
   const { data: stats } = useGetStudentStats();
   const { data: applications } = useGetMyApplications();
+  const jobTypes = filters?.jobTypes ?? [];
+  const availableSkills = filters?.skills ?? [];
   
   const appliedJobIds = useMemo(() => {
     return new Set(applications?.map(app => app.jobId) || []);
@@ -109,11 +111,11 @@ export default function StudentHome() {
             </div>
           </div>
 
-          {filters && filters.jobTypes.length > 0 && (
+          {jobTypes.length > 0 && (
             <div className="space-y-3">
               <h3 className="font-semibold text-lg">Job Type</h3>
               <div className="flex flex-wrap gap-2">
-                {filters.jobTypes.map(type => (
+                {jobTypes.map(type => (
                   <Badge 
                     key={type} 
                     variant={selectedJobTypes.includes(type) ? "default" : "outline"}
@@ -127,11 +129,11 @@ export default function StudentHome() {
             </div>
           )}
 
-          {filters && filters.skills.length > 0 && (
+          {availableSkills.length > 0 && (
             <div className="space-y-3">
               <h3 className="font-semibold text-lg">Skills</h3>
               <div className="flex flex-wrap gap-2">
-                {filters.skills.map(skill => (
+                {availableSkills.map(skill => (
                   <Badge 
                     key={skill} 
                     variant={selectedSkills.includes(skill) ? "secondary" : "outline"}
@@ -210,7 +212,7 @@ export default function StudentHome() {
                         </div>
                         <p className="text-slate-600 line-clamp-2 mb-4">{job.description}</p>
                         <div className="flex flex-wrap gap-2">
-                          {job.skills.map(skill => (
+                          {(job.skills ?? []).map(skill => (
                             <Badge key={skill} variant="secondary" className="bg-slate-100 text-slate-700">{skill}</Badge>
                           ))}
                         </div>

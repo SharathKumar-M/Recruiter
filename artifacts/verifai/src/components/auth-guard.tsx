@@ -10,6 +10,28 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, allowedRole }: AuthGuardProps) {
+  const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+
+  if (!clerkEnabled) {
+    return <LocalAuthGuard allowedRole={allowedRole}>{children}</LocalAuthGuard>;
+  }
+
+  return <ClerkAuthGuard allowedRole={allowedRole}>{children}</ClerkAuthGuard>;
+}
+
+function LocalAuthGuard({ children, allowedRole }: AuthGuardProps) {
+  const [, setLocation] = useLocation();
+  const { role } = useAuthStore();
+
+  useEffect(() => {
+    if (!role) setLocation("/login");
+  }, [role, setLocation]);
+
+  if (!role || (allowedRole && role !== allowedRole)) return null;
+  return <>{children}</>;
+}
+
+function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [, setLocation] = useLocation();

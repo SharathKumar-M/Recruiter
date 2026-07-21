@@ -9,14 +9,27 @@ import { motion } from "framer-motion";
 export default function LoginPage() {
   const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
+  const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
   const handleStudentLogin = () => {
+    if (!clerkEnabled) {
+      setDemoMode(true);
+      setRole("student");
+      setLocation("/home");
+      return;
+    }
     setDemoMode(false);
     setRole("student");
     setLocation("/sign-in");
   };
 
   const handleRecruiterLogin = () => {
+    if (!clerkEnabled) {
+      setDemoMode(true);
+      setRole("recruiter");
+      setLocation("/recruiter");
+      return;
+    }
     setDemoMode(false);
     setRole("recruiter");
     setLocation("/sign-in");
