@@ -195,7 +195,9 @@ export default function RecruiterJobs() {
                 </div>
 
                 <div className="space-y-2">
-                  <FormLabel>Required Skills</FormLabel>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Required Skills
+                  </label>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {skills.map(skill => (
                       <Badge key={skill} variant="secondary" className="flex items-center gap-1">

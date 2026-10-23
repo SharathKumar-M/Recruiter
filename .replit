@@ -6,7 +6,7 @@ deploymentTarget = "autoscale"
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
-env = { "CI" = "true" }
+env = { CI = "true" }
 
 [workflows]
 runButton = "Project"
@@ -26,6 +26,14 @@ externalPort = 80
 [[ports]]
 localPort = 8081
 externalPort = 8081
+
+[[ports]]
+localPort = 8082
+externalPort = 3002
+
+[[ports]]
+localPort = 8083
+externalPort = 3003
 
 [[ports]]
 localPort = 18418
