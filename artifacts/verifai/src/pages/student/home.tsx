@@ -1,239 +1,42 @@
-import { useListJobs, useGetJobFilters, useApplyToJob, useGetStudentStats, useGetMyApplications, getListJobsQueryKey, getGetStudentStatsQueryKey, getGetMyApplicationsQueryKey } from "@workspace/api-client-react";
-import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, MapPin, Search, Sparkles, UserRound } from "lucide-react";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { useApplyToJob, useGetMyApplications, useGetStudentProfile, useGetStudentStats, useListJobs, getGetMyApplicationsQueryKey, getGetStudentStatsQueryKey, getListJobsQueryKey } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, MapPin, Building, Briefcase, DollarSign, Clock, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
-import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQueryClient } from "@tanstack/react-query";
+
+const statusClass: Record<string, string> = { pending: "bg-amber-50 text-amber-700 ring-amber-200", reviewed: "bg-blue-50 text-blue-700 ring-blue-200", shortlisted: "bg-emerald-50 text-emerald-700 ring-emerald-200", rejected: "bg-rose-50 text-rose-700 ring-rose-200" };
 
 export default function StudentHome() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const queryClient = useQueryClient();
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useGetStudentStats();
+  const { data: profile } = useGetStudentProfile();
+  const { data: applications, isLoading: appsLoading } = useGetMyApplications();
+  const { data: jobs, isLoading: jobsLoading, isError: jobsError } = useListJobs({ search: search || undefined });
+  const appliedIds = useMemo(() => new Set((applications ?? []).map((app) => app.jobId)), [applications]);
+  const recommended = (jobs ?? []).filter((job) => !appliedIds.has(job.id)).slice(0, 4);
+  const missing = [!profile?.college && "education", !(profile?.skills?.length) && "skills", !profile?.resumeUrl && "a resume", !profile?.linkedinUrl && "LinkedIn"].filter(Boolean) as string[];
+  const applyMutation = useApplyToJob({ mutation: { onSuccess: () => { toast.success("Application submitted"); queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetStudentStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetMyApplicationsQueryKey() }); }, onError: () => toast.error("We couldn't submit that application. Please try again.") } });
+  const firstName = profile?.displayName?.split(" ")[0] || "there";
+  const statsCards = [["Jobs applied", stats?.totalApplications, "text-indigo-700", "bg-indigo-50"], ["Under review", stats?.pendingApplications, "text-amber-700", "bg-amber-50"], ["Shortlisted", stats?.shortlistedApplications, "text-emerald-700", "bg-emerald-50"], ["Profile complete", stats ? `${stats.profileCompletion}%` : undefined, "text-violet-700", "bg-violet-50"]] as const;
 
-  const { data: filters } = useGetJobFilters();
-  const { data: stats } = useGetStudentStats();
-  const { data: applications } = useGetMyApplications();
-  const jobTypes = filters?.jobTypes ?? [];
-  const availableSkills = filters?.skills ?? [];
-  
-  const appliedJobIds = useMemo(() => {
-    return new Set(applications?.map(app => app.jobId) || []);
-  }, [applications]);
-
-  const { data: jobs, isLoading: isJobsLoading } = useListJobs({
-    search: searchTerm || undefined,
-    skills: selectedSkills.length > 0 ? selectedSkills.join(",") : undefined,
-    jobType: selectedJobTypes.length > 0 ? selectedJobTypes.join(",") : undefined,
-  });
-
-  const applyMutation = useApplyToJob({
-    mutation: {
-      onSuccess: () => {
-        toast.success("Application submitted successfully!");
-        queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetStudentStatsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetMyApplicationsQueryKey() });
-      },
-      onError: (err) => {
-        toast.error("Failed to apply. Please try again.");
-        console.error(err);
-      }
-    }
-  });
-
-  const toggleSkill = (skill: string) => {
-    setSelectedSkills(prev => 
-      prev.includes(skill) ? prev.filter(s => s !== skill) : [...prev, skill]
-    );
-  };
-
-  const toggleJobType = (type: string) => {
-    setSelectedJobTypes(prev => 
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
-  };
-
-  return (
-    <main className="flex-1 container mx-auto p-4 md:p-8">
-      {/* Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-indigo-50 border-indigo-100">
-          <CardContent className="p-4 flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-indigo-700">{stats?.totalApplications || 0}</span>
-            <span className="text-sm font-medium text-indigo-600 mt-1">Total Applications</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-amber-50 border-amber-100">
-          <CardContent className="p-4 flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-amber-700">{stats?.pendingApplications || 0}</span>
-            <span className="text-sm font-medium text-amber-600 mt-1">Pending</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-emerald-50 border-emerald-100">
-          <CardContent className="p-4 flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-emerald-700">{stats?.shortlistedApplications || 0}</span>
-            <span className="text-sm font-medium text-emerald-600 mt-1">Shortlisted</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-slate-50 border-slate-200">
-          <CardContent className="p-4 flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-slate-700">{stats?.profileCompletion || 0}%</span>
-            <div className="w-full bg-slate-200 h-2 rounded-full mt-2 overflow-hidden">
-              <div 
-                className="bg-primary h-full rounded-full" 
-                style={{ width: `${stats?.profileCompletion || 0}%` }}
-              />
-            </div>
-            <span className="text-xs font-medium text-slate-500 mt-1">Profile Completion</span>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Sidebar Filters */}
-        <aside className="w-full md:w-64 shrink-0 space-y-6">
-          <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Search</h3>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Job title or company..." 
-                className="pl-9"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {jobTypes.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg">Job Type</h3>
-              <div className="flex flex-wrap gap-2">
-                {jobTypes.map(type => (
-                  <Badge 
-                    key={type} 
-                    variant={selectedJobTypes.includes(type) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => toggleJobType(type)}
-                  >
-                    {type}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {availableSkills.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg">Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {availableSkills.map(skill => (
-                  <Badge 
-                    key={skill} 
-                    variant={selectedSkills.includes(skill) ? "secondary" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => toggleSkill(skill)}
-                  >
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </aside>
-
-        {/* Job Listings */}
-        <div className="flex-1 space-y-4">
-          <h2 className="text-2xl font-bold mb-4">Available Positions</h2>
-          
-          {isJobsLoading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="mb-4">
-                <CardHeader>
-                  <Skeleton className="h-6 w-1/3 mb-2" />
-                  <Skeleton className="h-4 w-1/4" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-4 w-full mb-2" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardContent>
-              </Card>
-            ))
-          ) : jobs?.length === 0 ? (
-            <Card className="p-12 text-center border-dashed">
-              <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                <Briefcase className="w-8 h-8 text-slate-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">No jobs found</h3>
-              <p className="text-muted-foreground">Try adjusting your filters or search term.</p>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {jobs?.map((job, index) => {
-                const hasApplied = appliedJobIds.has(job.id);
-                return (
-                  <motion.div
-                    key={job.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Card className="transition-all hover:shadow-md">
-                      <CardHeader className="pb-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle className="text-xl">{job.title}</CardTitle>
-                            <CardDescription className="text-base flex items-center gap-2 mt-1 font-medium text-slate-700">
-                              <Building className="w-4 h-4" /> {job.company}
-                            </CardDescription>
-                          </div>
-                          {hasApplied ? (
-                            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-0 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Applied
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-slate-500 flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {new Date(job.postedAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-4">
-                        <div className="flex flex-wrap gap-4 mb-4 text-sm text-slate-600">
-                          <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-slate-400" /> {job.location}</span>
-                          <span className="flex items-center gap-1.5"><Briefcase className="w-4 h-4 text-slate-400" /> {job.jobType}</span>
-                          {job.salary && <span className="flex items-center gap-1.5"><DollarSign className="w-4 h-4 text-slate-400" /> {job.salary}</span>}
-                        </div>
-                        <p className="text-slate-600 line-clamp-2 mb-4">{job.description}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {(job.skills ?? []).map(skill => (
-                            <Badge key={skill} variant="secondary" className="bg-slate-100 text-slate-700">{skill}</Badge>
-                          ))}
-                        </div>
-                      </CardContent>
-                      <CardFooter className="pt-0 justify-end">
-                        <Button 
-                          disabled={hasApplied || applyMutation.isPending}
-                          onClick={() => applyMutation.mutate({ jobId: job.id })}
-                          className={hasApplied ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
-                        >
-                          {hasApplied ? "Application Submitted" : "Apply Now"}
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </main>
-  );
+  return <main className="mx-auto max-w-7xl p-4 md:p-8">
+    <section className="mb-8 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-6 py-8 text-white shadow-sm md:px-9"><div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center"><div><p className="mb-2 text-sm font-medium text-indigo-200">Your career workspace</p><h2 className="text-3xl font-semibold tracking-tight">Welcome back, {firstName}.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Build momentum with roles that match your skills and a profile recruiters can understand at a glance.</p></div><Button asChild className="bg-white text-slate-950 hover:bg-indigo-50"><a href="#recommended">Find jobs <ArrowRight className="ml-2 h-4 w-4" /></a></Button></div></section>
+    {statsError && <Card className="mb-6 border-amber-200 bg-amber-50"><CardContent className="p-4 text-sm text-amber-800">Some totals could not be loaded. You can still browse roles below.</CardContent></Card>}
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">{statsCards.map(([label, value, text, bg]) => <Card key={label} className="border-slate-200 shadow-none"><CardContent className="p-4 md:p-5"><p className="text-xs font-medium text-slate-500">{label}</p>{statsLoading ? <Skeleton className="mt-3 h-8 w-12" /> : <p className={`mt-2 text-2xl font-semibold tracking-tight ${text}`}>{value ?? "—"}</p>}<div className={`mt-3 h-1 rounded-full ${bg}`} /></CardContent></Card>)}</section>
+    <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]"><section id="recommended" className="scroll-mt-24"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Recommended jobs</h2><p className="mt-1 text-sm text-slate-500">Current opportunities from the platform.</p></div><div className="relative w-full sm:w-64"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search roles" className="pl-9" /></div></div>
+      {jobsLoading ? <div className="grid gap-4 md:grid-cols-2">{[1,2,3,4].map((item) => <Skeleton key={item} className="h-60 w-full rounded-2xl" />)}</div> : jobsError ? <Empty text="Jobs are temporarily unavailable. Please refresh and try again." /> : recommended.length ? <div className="grid gap-4 md:grid-cols-2">{recommended.map((job, index) => <motion.div key={job.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .04 }}><Card className="h-full border-slate-200 shadow-sm transition-shadow hover:shadow-md"><CardContent className="flex h-full flex-col p-5"><div className="flex items-start justify-between gap-4"><div><h3 className="font-semibold text-slate-950">{job.title}</h3><p className="mt-1 text-sm text-slate-600">{job.company}</p></div><BriefcaseBusiness className="h-5 w-5 shrink-0 text-indigo-500" /></div><div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600"><span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{job.location}</span><span className="rounded-full bg-slate-100 px-2 py-0.5">{job.jobType}</span></div><div className="mt-4 flex flex-wrap gap-1.5">{(job.skills ?? []).slice(0, 3).map((skill) => <Badge key={skill} variant="secondary" className="bg-indigo-50 text-indigo-700">{skill}</Badge>)}</div><div className="mt-auto flex items-center justify-between pt-5"><span className="text-xs text-slate-500">Posted {new Date(job.postedAt).toLocaleDateString()}</span><Button size="sm" disabled={applyMutation.isPending} onClick={() => applyMutation.mutate({ jobId: job.id })}>Apply <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button></div></CardContent></Card></motion.div>)}</div> : <Empty text="No matching jobs yet. Try a different search or check back for new opportunities." />}</section>
+      <aside className="space-y-6"><Card className="border-indigo-100 bg-white shadow-sm"><CardContent className="p-5"><div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-indigo-600" /><h2 className="font-semibold">Profile progress</h2></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${stats?.profileCompletion ?? 0}%` }} /></div><p className="mt-3 text-sm text-slate-600">{missing.length ? `Add ${missing.slice(0, 2).join(" and ")} to make your profile stronger.` : "Your core profile details are complete."}</p><Button asChild variant="outline" size="sm" className="mt-4 w-full"><Link href="/profile">Complete profile <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link></Button></CardContent></Card>
+        <section id="insights" className="scroll-mt-24"><Card className="border-violet-100 bg-violet-50/50 shadow-none"><CardContent className="p-5"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-600" /><h2 className="font-semibold">Career insights</h2></div><p className="mt-2 text-sm leading-6 text-slate-600">Profile guidance, not an AI verification.</p><ul className="mt-4 space-y-3 text-sm text-slate-700"><li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />{profile?.resumeUrl ? "Keep your resume current as your experience grows." : "Add your resume when document upload is available."}</li><li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />{profile?.skills?.length ? "Tailor your listed skills to roles you want next." : "List the skills you want to showcase."}</li></ul></CardContent></Card></section>
+        <Card><CardContent className="p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Recent applications</h2><p className="mt-1 text-xs text-slate-500">Your latest activity</p></div><Link href="/profile#applications" className="text-xs font-medium text-indigo-600">View all</Link></div>{appsLoading ? <Skeleton className="mt-4 h-20 w-full" /> : (applications ?? []).slice(0, 3).length ? <div className="mt-4 space-y-3">{(applications ?? []).slice(0, 3).map((app) => <Link key={app.id} href="/profile#applications" className="block rounded-lg p-2 hover:bg-slate-50"><p className="truncate text-sm font-medium">{app.job?.title ?? "Job application"}</p><Badge className={`mt-1 border-0 text-[10px] capitalize ring-1 ${statusClass[app.status] ?? "bg-slate-100 text-slate-700 ring-slate-200"}`}>{app.status}</Badge></Link>)}</div> : <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Your applications will appear here.</div>}</CardContent></Card></aside></div>
+  </main>;
 }
+
+function Empty({ text }: { text: string }) { return <Card className="border-dashed"><CardContent className="p-10 text-center"><BriefcaseBusiness className="mx-auto h-9 w-9 text-slate-400" /><h3 className="mt-3 font-semibold">Nothing to show</h3><p className="mt-1 text-sm text-slate-500">{text}</p></CardContent></Card>; }

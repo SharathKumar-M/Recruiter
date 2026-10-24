@@ -116,7 +116,7 @@ export default function StudentProfile() {
         
         {/* Profile Editor */}
         <div className="md:col-span-2 space-y-6">
-          <Card>
+          <Card id="settings" className="scroll-mt-24">
             <CardHeader>
               <CardTitle>Public Profile</CardTitle>
               <CardDescription>Manage how recruiters see you on VERIF-AI</CardDescription>
@@ -244,12 +244,19 @@ export default function StudentProfile() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <Card className="bg-indigo-50 border-indigo-100">
+          <Card id="documents" className="scroll-mt-24 bg-indigo-50 border-indigo-100">
             <CardHeader>
               <CardTitle className="text-indigo-900">Certificates</CardTitle>
               <CardDescription className="text-indigo-700">Verified credentials</CardDescription>
             </CardHeader>
             <CardContent>
+              {profile?.resumeUrl ? (
+                <a href={profile.resumeUrl} target="_blank" rel="noreferrer" className="mb-4 flex items-center gap-3 rounded-md border border-indigo-100 bg-white p-3 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+                  <FileText className="h-4 w-4" /> View {profile.resumeFilename || "resume"}
+                </a>
+              ) : (
+                <p className="mb-4 rounded-md border border-dashed border-indigo-200 bg-white/60 p-3 text-sm text-indigo-700">Resume upload is not available in this version yet.</p>
+              )}
               {profile?.certificates && profile.certificates.length > 0 ? (
                 <ul className="space-y-3">
                   {profile.certificates.map(cert => (
@@ -275,7 +282,7 @@ export default function StudentProfile() {
       </div>
 
       {/* Applications */}
-      <div>
+      <div id="applications" className="scroll-mt-24">
         <h2 className="text-2xl font-bold mb-4">My Applications</h2>
         {isAppsLoading ? (
           <div className="grid md:grid-cols-3 gap-4">

@@ -353,6 +353,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/AIVerificationResult"
 
+  /ai/student-insights:
+    post:
+      operationId: generateStudentInsights
+      tags: [ai]
+      summary: Generate career guidance for the authenticated student
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentInsightsInput"
+      responses:
+        "200":
+          description: AI-generated career guidance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentInsights"
+        "503":
+          description: AI service unavailable
+
 components:
   schemas:
     HealthStatus:
@@ -417,6 +438,55 @@ components:
         postedAt: { type: string }
         isActive: { type: boolean }
         applicantCount: { type: integer }
+
+    StudentInsightsInput:
+      type: object
+      properties:
+        jobId: { type: integer }
+
+    JobMatchInsight:
+      type: object
+      required: [jobId, matchScore, matchingSkills, missingSkills, reasoning, learningPriorities, interviewTopics]
+      properties:
+        jobId: { type: integer }
+        matchScore: { type: integer, minimum: 0, maximum: 100 }
+        matchingSkills: { type: array, items: { type: string } }
+        missingSkills: { type: array, items: { type: string } }
+        reasoning: { type: string }
+        learningPriorities: { type: array, items: { type: string } }
+        interviewTopics: { type: array, items: { type: string } }
+
+    ProjectRecommendation:
+      type: object
+      required: [title, description, skills]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        skills: { type: array, items: { type: string } }
+
+    ResumeInsight:
+      type: object
+      required: [available, message, suggestions]
+      properties:
+        available: { type: boolean }
+        message: { type: string }
+        suggestions: { type: array, items: { type: string } }
+
+    StudentInsights:
+      type: object
+      required: [generatedAt, profileInsights, projectRecommendations, resumeInsight, disclaimer]
+      properties:
+        generatedAt: { type: string }
+        profileInsights: { type: array, items: { type: string } }
+        jobMatch:
+          anyOf:
+            - $ref: "#/components/schemas/JobMatchInsight"
+            - type: "null"
+        projectRecommendations:
+          type: array
+          items: { $ref: "#/components/schemas/ProjectRecommendation" }
+        resumeInsight: { $ref: "#/components/schemas/ResumeInsight" }
+        disclaimer: { type: string }
 
     JobInput:
       type: object

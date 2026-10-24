@@ -10,12 +10,16 @@ import { setDemoHeader } from "@workspace/api-client-react";
 
 import { AuthGuard } from "@/components/auth-guard";
 import { Navbar } from "@/components/navbar";
+import { StudentShell } from "@/components/student-shell";
 import { useAuthStore } from "@/hooks/use-auth-store";
 
 // Pages
 import LoginPage from "@/pages/login";
 import StudentHome from "@/pages/student/home";
 import StudentProfile from "@/pages/student/profile";
+import StudentJobs from "@/pages/student/jobs";
+import StudentApplications from "@/pages/student/applications";
+import StudentInsights from "@/pages/student/insights";
 import RecruiterDashboard from "@/pages/recruiter/dashboard";
 import RecruiterJobs from "@/pages/recruiter/jobs";
 import RecruiterProfile from "@/pages/recruiter/profile";
@@ -231,19 +235,31 @@ function AppRoutes() {
 
             <Route path="/home">
               <AuthGuard allowedRole="student">
-                <div className="min-h-[100dvh] flex flex-col bg-slate-50">
-                  <Navbar />
-                  <StudentHome />
-                </div>
+                <StudentShell title="Student Dashboard"><StudentHome /></StudentShell>
               </AuthGuard>
             </Route>
 
             <Route path="/profile">
               <AuthGuard allowedRole="student">
-                <div className="min-h-[100dvh] flex flex-col bg-slate-50">
-                  <Navbar />
-                  <StudentProfile />
-                </div>
+                <StudentShell title="My Profile"><StudentProfile /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/jobs">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Find Jobs"><StudentJobs /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/applications">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="My Applications"><StudentApplications /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/insights">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="AI Career Insights"><StudentInsights /></StudentShell>
               </AuthGuard>
             </Route>
 

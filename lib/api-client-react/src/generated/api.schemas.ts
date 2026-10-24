@@ -66,6 +66,45 @@ export interface Job {
   applicantCount: number;
 }
 
+export interface StudentInsightsInput {
+  jobId?: number;
+}
+
+export interface JobMatchInsight {
+  jobId: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  matchScore: number;
+  matchingSkills: string[];
+  missingSkills: string[];
+  reasoning: string;
+  learningPriorities: string[];
+  interviewTopics: string[];
+}
+
+export interface ProjectRecommendation {
+  title: string;
+  description: string;
+  skills: string[];
+}
+
+export interface ResumeInsight {
+  available: boolean;
+  message: string;
+  suggestions: string[];
+}
+
+export interface StudentInsights {
+  generatedAt: string;
+  profileInsights: string[];
+  jobMatch?: JobMatchInsight | null;
+  projectRecommendations: ProjectRecommendation[];
+  resumeInsight: ResumeInsight;
+  disclaimer: string;
+}
+
 export interface JobInput {
   title: string;
   description: string;

@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db, usersTable, verificationsTable, certificatesTable } from "@workspace/db";
+import { db, usersTable, verificationsTable, certificatesTable, jobsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireRecruiter } from "../middlewares/requireAuth";
+import { GenerateStudentInsightsBody } from "@workspace/api-zod";
+import { requireRecruiter, requireStudent } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -186,6 +187,59 @@ router.get("/ai/result/:studentId", requireRecruiter, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "get ai result error");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/ai/student-insights", requireStudent, async (req, res) => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      res.status(503).json({ error: "AI insights are currently unavailable." });
+      return;
+    }
+
+    const parsed = GenerateStudentInsightsBody.safeParse(req.body ?? {});
+    if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
+    const student = (req as any).dbUser;
+    const jobId = parsed.data.jobId;
+    const [job] = jobId ? await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1) : [null];
+    if (jobId && (!job || !job.isActive)) { res.status(404).json({ error: "Active job not found" }); return; }
+
+    const documentedSkills = (student.skills ?? []).map((skill: string) => skill.trim()).filter(Boolean);
+    const requiredSkills = job?.skills ?? [];
+    const normalizedStudentSkills = new Map(documentedSkills.map((skill: string) => [skill.toLowerCase(), skill]));
+    const matchingSkills = requiredSkills.filter((skill: string) => normalizedStudentSkills.has(skill.toLowerCase()));
+    const missingSkills = requiredSkills.filter((skill: string) => !normalizedStudentSkills.has(skill.toLowerCase()));
+    const matchScore = job ? (requiredSkills.length ? Math.round((matchingSkills.length / requiredSkills.length) * 100) : 0) : null;
+
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const { generateText } = await import("ai");
+    const openai = createOpenAI({ baseURL: process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1", apiKey: process.env.OPENAI_API_KEY });
+    const profile = {
+      college: student.college ?? null,
+      skills: documentedSkills,
+      hasLinkedIn: Boolean(student.linkedinUrl),
+      hasGitHub: Boolean(student.githubUrl),
+      hasPortfolio: Boolean(student.portfolioUrl),
+      hasResume: Boolean(student.resumeUrl),
+    };
+    const prompt = `You are a supportive career assistant. Use only the documented profile data below. Do not invent credentials, work history, achievements, or resume content. Do not assess identity, honesty, employability, or protected characteristics. Do not promise interviews or employment. Return JSON only with this exact shape:\n{\n  "profileInsights": ["concise actionable suggestion"],\n  "reasoning": "brief plain-language explanation for the job match, if a job is provided; otherwise an empty string",\n  "learningPriorities": ["skill or practical next step"],\n  "interviewTopics": ["topic"],\n  "projectRecommendations": [{"title":"project title", "description":"how it strengthens the documented profile", "skills":["skill"]}]\n}\nProfile: ${JSON.stringify(profile)}\nJob context: ${job ? JSON.stringify({ title: job.title, company: job.company, description: job.description, requiredSkills, matchingSkills, missingSkills }) : "No job selected"}`;
+    const result = await generateText({ model: openai("gpt-4o-mini"), prompt, maxOutputTokens: 900 });
+    const match = result.text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("AI did not return structured insights");
+    const generated = JSON.parse(match[0]);
+    if (!Array.isArray(generated.profileInsights) || !Array.isArray(generated.projectRecommendations)) throw new Error("AI response was incomplete");
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      profileInsights: generated.profileInsights.slice(0, 5),
+      jobMatch: job ? { jobId: job.id, matchScore, matchingSkills, missingSkills, reasoning: typeof generated.reasoning === "string" ? generated.reasoning : "Match is calculated from skills documented in your profile and this job listing.", learningPriorities: Array.isArray(generated.learningPriorities) ? generated.learningPriorities.slice(0, 5) : [], interviewTopics: Array.isArray(generated.interviewTopics) ? generated.interviewTopics.slice(0, 5) : [] } : null,
+      projectRecommendations: generated.projectRecommendations.slice(0, 3).map((project: any) => ({ title: String(project.title ?? "Project idea"), description: String(project.description ?? "Build a focused project using skills you want to demonstrate."), skills: Array.isArray(project.skills) ? project.skills.slice(0, 6).map(String) : [] })),
+      resumeInsight: { available: false, message: student.resumeUrl ? "A resume is attached, but this application does not support résumé text parsing yet." : "No résumé is attached. Résumé-specific suggestions become available when text parsing is supported.", suggestions: [] },
+      disclaimer: "AI-generated career guidance is based only on the information you provide. It is not a verification, hiring decision, or guarantee of an outcome.",
+    });
+  } catch (err) {
+    req.log.error({ err }, "student insights error");
+    res.status(503).json({ error: "AI insights are currently unavailable. Please try again later." });
   }
 });
 
