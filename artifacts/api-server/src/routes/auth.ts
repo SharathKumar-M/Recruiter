@@ -16,8 +16,12 @@ router.post("/auth/sync", async (req, res) => {
     }
     const { clerkId, email, role, displayName, companyName } = parsed.data;
 
+    // Security check: ensure valid role
+    const assignedRole = role === "recruiter" ? "recruiter" : "student";
+
     const existing = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId)).limit(1);
     if (existing[0]) {
+      // Return existing database role to prevent privilege escalation / tampering
       res.json({ userId: existing[0].id, role: existing[0].role });
       return;
     }
@@ -25,7 +29,7 @@ router.post("/auth/sync", async (req, res) => {
     const [created] = await db.insert(usersTable).values({
       clerkId,
       email,
-      role,
+      role: assignedRole,
       displayName,
       companyName: companyName ?? null,
       skills: [],

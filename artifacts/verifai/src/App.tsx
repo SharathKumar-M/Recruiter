@@ -20,6 +20,10 @@ import StudentProfile from "@/pages/student/profile";
 import StudentJobs from "@/pages/student/jobs";
 import StudentApplications from "@/pages/student/applications";
 import StudentInsights from "@/pages/student/insights";
+import StudentDocuments from "@/pages/student/documents";
+import StudentNotifications from "@/pages/student/notifications";
+import StudentSettings from "@/pages/student/settings";
+
 import RecruiterDashboard from "@/pages/recruiter/dashboard";
 import RecruiterJobs from "@/pages/recruiter/jobs";
 import RecruiterProfile from "@/pages/recruiter/profile";
@@ -100,7 +104,7 @@ function SignUpPage() {
 function RegisterStudentPage() {
   const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
-  
+
   useEffect(() => {
     setRole("student");
     if (!clerkPubKey) {
@@ -110,14 +114,14 @@ function RegisterStudentPage() {
       setLocation("/sign-up");
     }
   }, [setRole, setDemoMode, setLocation]);
-  
+
   return null;
 }
 
 function RegisterRecruiterPage() {
   const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
-  
+
   useEffect(() => {
     setRole("recruiter");
     if (!clerkPubKey) {
@@ -127,7 +131,7 @@ function RegisterRecruiterPage() {
       setLocation("/sign-up");
     }
   }, [setRole, setDemoMode, setLocation]);
-  
+
   return null;
 }
 
@@ -227,7 +231,7 @@ function AppRoutes() {
       <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/login" component={LoginPage} />
-            
+
             <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
             <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : LoginPage} />
             <Route path="/register/student" component={RegisterStudentPage} />
@@ -260,6 +264,24 @@ function AppRoutes() {
             <Route path="/insights">
               <AuthGuard allowedRole="student">
                 <StudentShell title="AI Career Insights"><StudentInsights /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/documents">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Resume & Documents"><StudentDocuments /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/notifications">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Notifications"><StudentNotifications /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/settings">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Student Settings"><StudentSettings /></StudentShell>
               </AuthGuard>
             </Route>
 
