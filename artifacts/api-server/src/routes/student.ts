@@ -24,10 +24,17 @@ function serializeStudent(user: any, appliedJobIds: number[], certificates: any[
     email: user.email,
     role: user.role,
     college: user.college,
+    degree: user.degree,
+    branch: user.branch,
     location: user.location,
     graduationYear: user.graduationYear,
     professionalSummary: user.professionalSummary,
     skills: user.skills ?? [],
+    programmingLanguages: user.programmingLanguages ?? [],
+    frameworks: user.frameworks ?? [],
+    databases: user.databases ?? [],
+    tools: user.tools ?? [],
+    otherSkills: user.otherSkills ?? [],
     linkedinUrl: user.linkedinUrl,
     githubUrl: user.githubUrl,
     portfolioUrl: user.portfolioUrl,
@@ -37,6 +44,10 @@ function serializeStudent(user: any, appliedJobIds: number[], certificates: any[
     appliedJobIds,
     certificates: certificates.map(c => ({
       id: c.id,
+      title: c.title,
+      issuingOrganization: c.issuingOrganization,
+      issueDate: c.issueDate,
+      documentReference: c.documentReference,
       filename: c.filename,
       url: c.url,
       uploadedAt: c.uploadedAt instanceof Date ? c.uploadedAt.toISOString() : c.uploadedAt,
@@ -77,6 +88,25 @@ router.put("/student/profile", requireStudent, async (req, res) => {
     if ((data as any).location !== undefined) updates.location = (data as any).location;
     if ((data as any).graduationYear !== undefined) updates.graduationYear = (data as any).graduationYear;
     if ((data as any).professionalSummary !== undefined) updates.professionalSummary = (data as any).professionalSummary;
+    if ((data as any).degree !== undefined) updates.degree = (data as any).degree;
+    if ((data as any).branch !== undefined) updates.branch = (data as any).branch;
+    if ((data as any).photoUrl !== undefined) updates.photoUrl = (data as any).photoUrl;
+    if ((data as any).programmingLanguages !== undefined) updates.programmingLanguages = (data as any).programmingLanguages;
+    if ((data as any).frameworks !== undefined) updates.frameworks = (data as any).frameworks;
+    if ((data as any).databases !== undefined) updates.databases = (data as any).databases;
+    if ((data as any).tools !== undefined) updates.tools = (data as any).tools;
+    if ((data as any).otherSkills !== undefined) updates.otherSkills = (data as any).otherSkills;
+
+    // Aggregate skills if categorized arrays are provided
+    const pl = updates.programmingLanguages ?? user.programmingLanguages ?? [];
+    const fw = updates.frameworks ?? user.frameworks ?? [];
+    const dbList = updates.databases ?? user.databases ?? [];
+    const toolsList = updates.tools ?? user.tools ?? [];
+    const other = updates.otherSkills ?? user.otherSkills ?? [];
+    const combinedSkills = Array.from(new Set([...pl, ...fw, ...dbList, ...toolsList, ...other]));
+    if (combinedSkills.length > 0) {
+      updates.skills = combinedSkills;
+    }
 
     const [updated] = await db.transaction(async (tx) => {
       const [resUser] = await tx.update(usersTable).set(updates).where(eq(usersTable.id, user.id)).returning();
@@ -101,14 +131,16 @@ router.get("/student/stats", requireStudent, async (req, res) => {
     const pending = apps.filter(a => a.status === "pending").length;
     const shortlisted = apps.filter(a => a.status === "shortlisted").length;
 
-    let completion = 20;
-    if (user.displayName) completion += 10;
-    if (user.college) completion += 15;
-    if (user.skills && user.skills.length > 0) completion += 15;
-    if (user.resumeUrl) completion += 20;
-    if (user.linkedinUrl) completion += 10;
-    if (user.githubUrl) completion += 10;
-    if (user.photoUrl) completion = Math.min(100, completion + 10);
+    let completion = 0;
+    if (user.displayName) completion += 15;
+    if (user.photoUrl) completion += 10;
+    if (user.professionalSummary && user.professionalSummary.length >= 10) completion += 10;
+    if (user.location) completion += 5;
+    if (user.college && user.degree) completion += 20;
+    if (user.skills && user.skills.length > 0) completion += 20;
+    if (user.githubUrl || user.linkedinUrl) completion += 10;
+    if (user.resumeUrl) completion += 10;
+    completion = Math.min(100, completion);
 
     const recentJobIds = apps.slice(0, 5).map(a => a.jobId);
     let jobsMap = new Map<number, any>();

@@ -5,6 +5,10 @@ import { z } from "zod/v4";
 export const certificatesTable = pgTable("certificates", {
   id: serial("id").primaryKey(),
   studentId: integer("student_id").notNull(),
+  title: text("title"),
+  issuingOrganization: text("issuing_organization"),
+  issueDate: text("issue_date"),
+  documentReference: text("document_reference"),
   filename: text("filename").notNull(),
   url: text("url").notNull(),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
