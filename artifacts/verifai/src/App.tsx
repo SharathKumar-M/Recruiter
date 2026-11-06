@@ -30,7 +30,9 @@ import RecruiterJobs from "@/pages/recruiter/jobs";
 import RecruiterProfile from "@/pages/recruiter/profile";
 import NotFound from "@/pages/not-found";
 
-const configuredClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const configuredClerkKey =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  import.meta.env.CLERK_PUBLISHABLE_KEY;
 const clerkPubKey = configuredClerkKey
   ? publishableKeyFromHost(window.location.hostname, configuredClerkKey)
   : undefined;
