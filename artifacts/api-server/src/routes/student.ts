@@ -17,7 +17,8 @@ import { requireStudent } from "../middlewares/requireAuth";
 
 const router = Router();
 
-function serializeStudent(user: any, appliedJobIds: number[], certificates: any[]) {
+function serializeStudent(user: any, appliedJobIds: number[], certificates: any[], documents: any[]) {
+  const resumeDoc = documents.find(d => d.documentType === "resume");
   return {
     id: user.id,
     displayName: user.displayName,
@@ -38,8 +39,8 @@ function serializeStudent(user: any, appliedJobIds: number[], certificates: any[
     linkedinUrl: user.linkedinUrl,
     githubUrl: user.githubUrl,
     portfolioUrl: user.portfolioUrl,
-    resumeUrl: user.resumeUrl,
-    resumeFilename: user.resumeFilename,
+    resumeUrl: user.resumeUrl || resumeDoc?.url || null,
+    resumeFilename: user.resumeFilename || resumeDoc?.filename || null,
     photoUrl: user.photoUrl,
     appliedJobIds,
     certificates: certificates.map(c => ({
@@ -61,7 +62,8 @@ router.get("/student/profile", requireStudent, async (req, res) => {
     const user = (req as any).dbUser;
     const apps = await db.select({ jobId: applicationsTable.jobId }).from(applicationsTable).where(eq(applicationsTable.studentId, user.id));
     const certs = await db.select().from(certificatesTable).where(eq(certificatesTable.studentId, user.id));
-    res.json(serializeStudent(user, apps.map(a => a.jobId), certs));
+    const docs = await db.select().from(documentsTable).where(eq(documentsTable.studentId, user.id));
+    res.json(serializeStudent(user, apps.map(a => a.jobId), certs, docs));
   } catch (err) {
     req.log.error({ err }, "get student profile error");
     res.status(500).json({ error: "Internal server error" });
@@ -115,7 +117,8 @@ router.put("/student/profile", requireStudent, async (req, res) => {
 
     const apps = await db.select({ jobId: applicationsTable.jobId }).from(applicationsTable).where(eq(applicationsTable.studentId, user.id));
     const certs = await db.select().from(certificatesTable).where(eq(certificatesTable.studentId, user.id));
-    res.json(serializeStudent(updated, apps.map(a => a.jobId), certs));
+    const docs = await db.select().from(documentsTable).where(eq(documentsTable.studentId, user.id));
+    res.json(serializeStudent(updated, apps.map(a => a.jobId), certs, docs));
   } catch (err) {
     req.log.error({ err }, "update student profile error");
     res.status(500).json({ error: "Internal server error" });

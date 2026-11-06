@@ -1,6 +1,18 @@
 import { Router } from "express";
-import { db, usersTable, jobsTable, applicationsTable, certificatesTable } from "@workspace/db";
-import { eq, inArray, desc } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  jobsTable,
+  applicationsTable,
+  certificatesTable,
+  recruiterNotesTable,
+  candidateScorecardsTable,
+  interviewsTable,
+  talentPoolsTable,
+  talentPoolMembersTable,
+  auditLogsTable
+} from "@workspace/db";
+import { eq, inArray, desc, and, or, ilike, sql } from "drizzle-orm";
 import { UpdateRecruiterProfileBody, UpdateApplicationStatusBody } from "@workspace/api-zod";
 import { requireRecruiter } from "../middlewares/requireAuth";
 
@@ -12,23 +24,6 @@ function serializeJob(j: any) {
     location: j.location, jobType: j.jobType, salary: j.salary, skills: j.skills ?? [],
     recruiterId: j.recruiterId, postedAt: j.postedAt instanceof Date ? j.postedAt.toISOString() : j.postedAt,
     isActive: j.isActive, applicantCount: j.applicantCount,
-  };
-}
-
-async function serializeStudent(user: any) {
-  const apps = await db.select({ jobId: applicationsTable.jobId }).from(applicationsTable).where(eq(applicationsTable.studentId, user.id));
-  const certs = await db.select().from(certificatesTable).where(eq(certificatesTable.studentId, user.id));
-  return {
-    id: user.id, displayName: user.displayName, email: user.email, role: user.role,
-    college: user.college, skills: user.skills ?? [],
-    linkedinUrl: user.linkedinUrl, githubUrl: user.githubUrl, portfolioUrl: user.portfolioUrl,
-    resumeUrl: user.resumeUrl, resumeFilename: user.resumeFilename, photoUrl: user.photoUrl,
-    appliedJobIds: apps.map((a: any) => a.jobId),
-    certificates: certs.map((c: any) => ({
-      id: c.id, filename: c.filename, url: c.url,
-      uploadedAt: c.uploadedAt instanceof Date ? c.uploadedAt.toISOString() : c.uploadedAt,
-    })),
-    createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
   };
 }
 
@@ -235,6 +230,201 @@ router.patch("/recruiter/applications/:applicationId", requireRecruiter, async (
     });
   } catch (err) {
     req.log.error({ err }, "update app status error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Notes CRUD (Recruiter private)
+router.get("/recruiter/applications/:applicationId/notes", requireRecruiter, async (req, res) => {
+  try {
+    const appId = parseInt(req.params.applicationId as string);
+    const notes = await db.select().from(recruiterNotesTable).where(eq(recruiterNotesTable.applicationId, appId));
+    res.json(notes);
+  } catch (err) {
+    req.log.error({ err }, "get notes error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/recruiter/applications/:applicationId/notes", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const appId = parseInt(req.params.applicationId as string);
+    const { note, tags } = req.body ?? {};
+    if (!note) { res.status(400).json({ error: "Note content is required" }); return; }
+
+    const [created] = await db.insert(recruiterNotesTable).values({
+      applicationId: appId,
+      recruiterId: recruiter.id,
+      note: String(note),
+      tags: Array.isArray(tags) ? tags.map(String) : [],
+    }).returning();
+    res.status(201).json(created);
+  } catch (err) {
+    req.log.error({ err }, "create note error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/recruiter/notes/:noteId", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const noteId = parseInt(req.params.noteId as string);
+    const [deleted] = await db.delete(recruiterNotesTable)
+      .where(and(eq(recruiterNotesTable.id, noteId), eq(recruiterNotesTable.recruiterId, recruiter.id)))
+      .returning();
+    if (!deleted) { res.status(404).json({ error: "Note not found" }); return; }
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "delete note error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Scorecards
+router.get("/recruiter/applications/:applicationId/scorecard", requireRecruiter, async (req, res) => {
+  try {
+    const appId = parseInt(req.params.applicationId as string);
+    const [scorecard] = await db.select().from(candidateScorecardsTable).where(eq(candidateScorecardsTable.applicationId, appId)).limit(1);
+    res.json(scorecard || null);
+  } catch (err) {
+    req.log.error({ err }, "get scorecard error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/recruiter/applications/:applicationId/scorecard", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const appId = parseInt(req.params.applicationId as string);
+    const { technicalSkills, communication, problemSolving, cultureFit, overallRating, feedback } = req.body ?? {};
+
+    const [existing] = await db.select().from(candidateScorecardsTable).where(eq(candidateScorecardsTable.applicationId, appId)).limit(1);
+
+    if (existing) {
+      const [updated] = await db.update(candidateScorecardsTable).set({
+        technicalSkills: technicalSkills !== undefined ? Number(technicalSkills) : existing.technicalSkills,
+        communication: communication !== undefined ? Number(communication) : existing.communication,
+        problemSolving: problemSolving !== undefined ? Number(problemSolving) : existing.problemSolving,
+        cultureFit: cultureFit !== undefined ? Number(cultureFit) : existing.cultureFit,
+        overallRating: overallRating !== undefined ? Number(overallRating) : existing.overallRating,
+        feedback: feedback !== undefined ? String(feedback) : existing.feedback,
+      }).where(eq(candidateScorecardsTable.id, existing.id)).returning();
+      res.json(updated);
+    } else {
+      const [created] = await db.insert(candidateScorecardsTable).values({
+        applicationId: appId,
+        recruiterId: recruiter.id,
+        technicalSkills: Number(technicalSkills ?? 0),
+        communication: Number(communication ?? 0),
+        problemSolving: Number(problemSolving ?? 0),
+        cultureFit: Number(cultureFit ?? 0),
+        overallRating: Number(overallRating ?? 0),
+        feedback: feedback ? String(feedback) : null,
+      }).returning();
+      res.status(201).json(created);
+    }
+  } catch (err) {
+    req.log.error({ err }, "upsert scorecard error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Interviews
+router.get("/recruiter/interviews", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const list = await db.select().from(interviewsTable).where(eq(interviewsTable.recruiterId, recruiter.id)).orderBy(desc(interviewsTable.scheduledAt));
+    res.json(list);
+  } catch (err) {
+    req.log.error({ err }, "get interviews error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/recruiter/interviews", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const { applicationId, studentId, scheduledAt, durationMinutes, mode, locationOrLink, notes } = req.body ?? {};
+    if (!applicationId || !studentId || !scheduledAt) {
+      res.status(400).json({ error: "Application ID, student ID, and scheduled time are required" });
+      return;
+    }
+
+    const [interview] = await db.insert(interviewsTable).values({
+      applicationId: Number(applicationId),
+      recruiterId: recruiter.id,
+      studentId: Number(studentId),
+      scheduledAt: String(scheduledAt),
+      durationMinutes: durationMinutes ? Number(durationMinutes) : 30,
+      mode: mode ? String(mode) : "Online",
+      locationOrLink: locationOrLink ? String(locationOrLink) : null,
+      notes: notes ? String(notes) : null,
+      status: "scheduled",
+    }).returning();
+
+    res.status(201).json(interview);
+  } catch (err) {
+    req.log.error({ err }, "schedule interview error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Candidate Search (Discoverable students only)
+router.get("/recruiter/candidates/search", requireRecruiter, async (req, res) => {
+  try {
+    const q = (req.query.q as string) || "";
+    const candidates = await db.select().from(usersTable)
+      .where(and(eq(usersTable.role, "student"), eq(usersTable.isDiscoverable, true)));
+
+    const filtered = candidates.filter(c => {
+      if (!q) return true;
+      const term = q.toLowerCase();
+      const nameMatch = c.displayName.toLowerCase().includes(term);
+      const emailMatch = c.email.toLowerCase().includes(term);
+      const collegeMatch = c.college?.toLowerCase().includes(term) ?? false;
+      const skillsMatch = c.skills?.some(s => s.toLowerCase().includes(term)) ?? false;
+      return nameMatch || emailMatch || collegeMatch || skillsMatch;
+    });
+
+    res.json(filtered.map(s => ({
+      id: s.id, displayName: s.displayName, email: s.email,
+      college: s.college, degree: s.degree, branch: s.branch,
+      skills: s.skills ?? [], location: s.location, photoUrl: s.photoUrl,
+      linkedinUrl: s.linkedinUrl, githubUrl: s.githubUrl, portfolioUrl: s.portfolioUrl,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "candidate search error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Talent Pools
+router.get("/recruiter/pools", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const pools = await db.select().from(talentPoolsTable).where(eq(talentPoolsTable.recruiterId, recruiter.id));
+    res.json(pools);
+  } catch (err) {
+    req.log.error({ err }, "get talent pools error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/recruiter/pools", requireRecruiter, async (req, res) => {
+  try {
+    const recruiter = (req as any).dbUser;
+    const { name, description } = req.body ?? {};
+    if (!name) { res.status(400).json({ error: "Pool name is required" }); return; }
+
+    const [pool] = await db.insert(talentPoolsTable).values({
+      recruiterId: recruiter.id,
+      name: String(name),
+      description: description ? String(description) : null,
+    }).returning();
+    res.status(201).json(pool);
+  } catch (err) {
+    req.log.error({ err }, "create talent pool error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

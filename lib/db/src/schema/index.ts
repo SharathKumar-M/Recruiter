@@ -7,3 +7,8 @@ export * from "./projects";
 export * from "./experience";
 export * from "./documents";
 export * from "./notifications";
+export * from "./recruiterNotes";
+export * from "./candidateScorecards";
+export * from "./interviews";
+export * from "./talentPools";
+export * from "./auditLogs";

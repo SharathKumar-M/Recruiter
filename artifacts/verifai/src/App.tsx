@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, useClerk, AuthenticateWithRedirectCallback } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
@@ -15,6 +15,7 @@ import { useAuthStore } from "@/hooks/use-auth-store";
 
 // Pages
 import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import StudentHome from "@/pages/student/home";
 import StudentProfile from "@/pages/student/profile";
 import StudentJobs from "@/pages/student/jobs";
@@ -81,10 +82,29 @@ const clerkAppearance = {
 
 function SignInPage() {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-50">
-      <Navbar />
-      <div className="flex-1 flex items-center justify-center p-4">
-        <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    <div className="min-h-[100dvh] flex flex-col bg-slate-950 text-white relative overflow-hidden">
+      {/* 3D Cosmic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-violet-600/15 rounded-full blur-[150px] animate-pulse" style={{ animationDuration: "8s" }} />
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute bg-white rounded-full opacity-60"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              width: `${Math.random() * 2 + 1}px`,
+              height: `${Math.random() * 2 + 1}px`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="relative z-10 flex flex-col min-h-[100dvh]">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+        </div>
       </div>
     </div>
   );
@@ -92,10 +112,29 @@ function SignInPage() {
 
 function SignUpPage() {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-50">
-      <Navbar />
-      <div className="flex-1 flex items-center justify-center p-4">
-        <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    <div className="min-h-[100dvh] flex flex-col bg-slate-950 text-white relative overflow-hidden">
+      {/* 3D Cosmic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-violet-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-indigo-600/15 rounded-full blur-[150px] animate-pulse" style={{ animationDuration: "8s" }} />
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute bg-white rounded-full opacity-60"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              width: `${Math.random() * 2 + 1}px`,
+              height: `${Math.random() * 2 + 1}px`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="relative z-10 flex flex-col min-h-[100dvh]">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+        </div>
       </div>
     </div>
   );
@@ -231,9 +270,11 @@ function AppRoutes() {
       <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/login" component={LoginPage} />
+            <Route path="/register" component={RegisterPage} />
+            <Route path="/sso-callback" component={() => <AuthenticateWithRedirectCallback />} />
 
             <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
-            <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : LoginPage} />
+            <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : RegisterPage} />
             <Route path="/register/student" component={RegisterStudentPage} />
             <Route path="/register/recruiter" component={RegisterRecruiterPage} />
 

@@ -472,6 +472,36 @@ components:
         message: { type: string }
         suggestions: { type: array, items: { type: string } }
 
+    RoadmapPhase:
+      type: object
+      required: [phase, description, timeline]
+      properties:
+        phase: { type: string }
+        description: { type: string }
+        timeline: { type: string }
+
+    YouTubeSuggestion:
+      type: object
+      required: [title, channel, url]
+      properties:
+        title: { type: string }
+        channel: { type: string }
+        url: { type: string }
+
+    StackLink:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string }
+        url: { type: string }
+
+    MissingStack:
+      type: object
+      required: [stack, reason]
+      properties:
+        stack: { type: string }
+        reason: { type: string }
+
     StudentInsights:
       type: object
       required: [generatedAt, profileInsights, projectRecommendations, resumeInsight, disclaimer]
@@ -482,6 +512,18 @@ components:
           anyOf:
             - $ref: "#/components/schemas/JobMatchInsight"
             - type: "null"
+        roadmap:
+          type: array
+          items: { $ref: "#/components/schemas/RoadmapPhase" }
+        youtubeSuggestions:
+          type: array
+          items: { $ref: "#/components/schemas/YouTubeSuggestion" }
+        stackLinks:
+          type: array
+          items: { $ref: "#/components/schemas/StackLink" }
+        missingStacks:
+          type: array
+          items: { $ref: "#/components/schemas/MissingStack" }
         projectRecommendations:
           type: array
           items: { $ref: "#/components/schemas/ProjectRecommendation" }

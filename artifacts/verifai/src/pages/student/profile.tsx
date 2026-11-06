@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useGetStudentProfile, useUpdateStudentProfile, getGetStudentProfileQueryKey } from "@workspace/api-client-react";
+import { useGetStudentProfile, useUpdateStudentProfile, getGetStudentProfileQueryKey, customFetch } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   User, Link as LinkIcon, Github, Briefcase, GraduationCap, X, Plus, Trash2, Edit3,
-  CheckCircle2, AlertCircle, Award, FolderGit2, ShieldCheck, MapPin, ExternalLink
+  CheckCircle2, AlertCircle, Award, FolderGit2, ShieldCheck, MapPin, ExternalLink, Upload
 } from "lucide-react";
 
 interface ProjectItem {
@@ -103,6 +103,16 @@ export default function StudentProfile() {
   const [certFilename, setCertFilename] = useState("");
   const [certUrl, setCertUrl] = useState("");
   const [isSubmittingCert, setIsSubmittingCert] = useState(false);
+  const [certIsDragging, setCertIsDragging] = useState(false);
+
+  const handleCertFileSelect = (file: File) => {
+    if (!certFilename.trim()) {
+      setCertFilename(file.name);
+    }
+    const fileUrl = URL.createObjectURL(file);
+    setCertUrl(fileUrl);
+    toast.success(`Selected file: ${file.name}`);
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -110,15 +120,15 @@ export default function StudentProfile() {
   // Fetch Projects & Experience
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch("/api/student/projects");
-      if (res.ok) setProjects(await res.json());
+      const res = await customFetch<ProjectItem[]>("/api/student/projects");
+      if (res) setProjects(res);
     } catch {}
   }, []);
 
   const fetchExperience = useCallback(async () => {
     try {
-      const res = await fetch("/api/student/experience");
-      if (res.ok) setExperience(await res.json());
+      const res = await customFetch<ExperienceItem[]>("/api/student/experience");
+      if (res) setExperience(res);
     } catch {}
   }, []);
 
@@ -214,9 +224,8 @@ export default function StudentProfile() {
     }
     setIsSubmittingProject(true);
     try {
-      const res = await fetch("/api/student/projects", {
+      await customFetch("/api/student/projects", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: projectTitle,
           description: projectDesc,
@@ -225,7 +234,6 @@ export default function StudentProfile() {
           liveUrl: projectLive || null,
         }),
       });
-      if (!res.ok) throw new Error("Failed to create project");
       toast.success("Project added successfully");
       setProjectTitle("");
       setProjectDesc("");
@@ -243,8 +251,7 @@ export default function StudentProfile() {
 
   const handleDeleteProject = async (id: number) => {
     try {
-      const res = await fetch(`/api/student/projects/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      await customFetch(`/api/student/projects/${id}`, { method: "DELETE" });
       toast.success("Project deleted");
       setProjects(projects.filter(p => p.id !== id));
     } catch {
@@ -261,9 +268,8 @@ export default function StudentProfile() {
     }
     setIsSubmittingExp(true);
     try {
-      const res = await fetch("/api/student/experience", {
+      await customFetch("/api/student/experience", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organization: expOrg,
           role: expRole,
@@ -273,7 +279,6 @@ export default function StudentProfile() {
           current: expCurrent,
         }),
       });
-      if (!res.ok) throw new Error();
       toast.success("Experience added");
       setExpOrg("");
       setExpRole("");
@@ -292,8 +297,7 @@ export default function StudentProfile() {
 
   const handleDeleteExperience = async (id: number) => {
     try {
-      const res = await fetch(`/api/student/experience/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      await customFetch(`/api/student/experience/${id}`, { method: "DELETE" });
       toast.success("Experience deleted");
       setExperience(experience.filter(e => e.id !== id));
     } catch {
@@ -310,21 +314,18 @@ export default function StudentProfile() {
     }
     setIsSubmittingCert(true);
     try {
-      const res = await fetch("/api/student/documents", {
+      await customFetch("/api/student/documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           documentType: "certificate",
           filename: certFilename,
           url: certUrl,
         }),
       });
-      if (!res.ok) throw new Error();
       toast.success("Certificate uploaded");
       setCertFilename("");
       setCertUrl("");
       setCertOpen(false);
-      // refetch profile to update certificates
       window.location.reload();
     } catch {
       toast.error("Failed to add certificate");
@@ -981,10 +982,46 @@ export default function StudentProfile() {
       <Dialog open={certOpen} onOpenChange={setCertOpen}>
         <DialogContent className="max-w-md rounded-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Add Certificate</DialogTitle>
-            <DialogDescription>Add a verified credential link.</DialogDescription>
+            <DialogTitle className="text-xl font-bold">Add Certificate / Document</DialogTitle>
+            <DialogDescription>Drag & drop a file or browse your local file explorer.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateCertificate} className="space-y-4 pt-2">
+            <div>
+              <Label className="text-xs font-medium text-slate-700">Upload from local files</Label>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setCertIsDragging(true); }}
+                onDragLeave={() => setCertIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setCertIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleCertFileSelect(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg";
+                  input.onchange = (ev: any) => {
+                    if (ev.target.files && ev.target.files[0]) {
+                      handleCertFileSelect(ev.target.files[0]);
+                    }
+                  };
+                  input.click();
+                }}
+                className={`mt-1.5 border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                  certIsDragging ? "border-indigo-600 bg-indigo-50/50" : "border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/20"
+                }`}
+              >
+                <Upload className="mx-auto h-8 w-8 text-indigo-600 mb-2" />
+                <p className="text-sm font-semibold text-slate-800">Drag & drop your file here</p>
+                <p className="text-xs text-slate-500 mt-1">Supports PDF, DOCX, Images (Click to open local file explorer)</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3 rounded-xl text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                  Browse local files
+                </Button>
+              </div>
+            </div>
+
             <div>
               <Label className="text-xs font-medium">Certificate Title / Filename</Label>
               <Input
@@ -1000,7 +1037,7 @@ export default function StudentProfile() {
               <Input
                 value={certUrl}
                 onChange={(e) => setCertUrl(e.target.value)}
-                placeholder="https://credly.com/..."
+                placeholder="https://credly.com/... or blob URL"
                 className="mt-1.5 rounded-xl"
                 required
               />

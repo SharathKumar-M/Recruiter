@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { customFetch } from "@workspace/api-client-react";
 import { FileText, Upload, Trash2, Plus, ExternalLink, ShieldCheck, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,15 +29,23 @@ export default function StudentDocuments() {
   const [filename, setFilename] = useState("");
   const [url, setUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFileSelect = (file: File) => {
+    if (!filename.trim()) {
+      setFilename(file.name);
+    }
+    const fileUrl = URL.createObjectURL(file);
+    setUrl(fileUrl);
+    toast.success(`Selected file: ${file.name}`);
+  };
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
     setIsError(false);
     try {
-      const res = await fetch("/api/student/documents");
-      if (!res.ok) throw new Error("Failed to fetch documents");
-      const data = await res.json();
-      setDocuments(data);
+      const data = await customFetch<DocumentItem[]>("/api/student/documents");
+      if (data) setDocuments(data);
     } catch {
       setIsError(true);
     } finally {
@@ -57,12 +66,10 @@ export default function StudentDocuments() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/student/documents", {
+      await customFetch("/api/student/documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documentType, filename, url }),
       });
-      if (!res.ok) throw new Error("Failed to upload document");
       toast.success("Document uploaded successfully");
       setFilename("");
       setUrl("");
@@ -77,8 +84,7 @@ export default function StudentDocuments() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/student/documents/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete document");
+      await customFetch(`/api/student/documents/${id}`, { method: "DELETE" });
       toast.success("Document deleted");
       setDocuments(documents.filter((d) => d.id !== id));
     } catch {
@@ -196,6 +202,43 @@ export default function StudentDocuments() {
               </select>
             </div>
 
+            {/* Local File Drag & Drop / Explorer */}
+            <div>
+              <Label className="text-xs font-medium text-slate-700">Upload from local files</Label>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleFileSelect(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg";
+                  input.onchange = (ev: any) => {
+                    if (ev.target.files && ev.target.files[0]) {
+                      handleFileSelect(ev.target.files[0]);
+                    }
+                  };
+                  input.click();
+                }}
+                className={`mt-1.5 border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                  isDragging ? "border-indigo-600 bg-indigo-50/50" : "border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/20"
+                }`}
+              >
+                <Upload className="mx-auto h-8 w-8 text-indigo-600 mb-2" />
+                <p className="text-sm font-semibold text-slate-800">Drag & drop your file here</p>
+                <p className="text-xs text-slate-500 mt-1">Supports PDF, DOCX, Images (Click to open local file explorer)</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3 rounded-xl text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                  Browse local files
+                </Button>
+              </div>
+            </div>
+
             <div>
               <Label className="text-xs font-medium text-slate-700">Document filename / Title</Label>
               <Input
@@ -208,11 +251,11 @@ export default function StudentDocuments() {
             </div>
 
             <div>
-              <Label className="text-xs font-medium text-slate-700">File URL (Secure storage link)</Label>
+              <Label className="text-xs font-medium text-slate-700">File URL (Auto-filled or manual)</Label>
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://storage.googleapis.com/..."
+                placeholder="https://storage.googleapis.com/... or blob URL"
                 className="mt-1.5 rounded-xl bg-white border-slate-200"
                 required
               />

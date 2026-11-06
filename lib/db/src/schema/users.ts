@@ -27,6 +27,7 @@ export const usersTable = pgTable("users", {
   portfolioUrl: text("portfolio_url"),
   resumeUrl: text("resume_url"),
   resumeFilename: text("resume_filename"),
+  isDiscoverable: boolean("is_discoverable").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
