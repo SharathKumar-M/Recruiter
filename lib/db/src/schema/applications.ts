@@ -1,17 +1,46 @@
-import { pgTable, text, serial, timestamp, integer, unique } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const applicationsTable = pgTable("applications", {
-  id: serial("id").primaryKey(),
-  jobId: integer("job_id").notNull(),
-  studentId: integer("student_id").notNull(),
-  status: text("status").notNull().default("pending"), // pending | reviewed | shortlisted | rejected
-  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  uniqueApplication: unique().on(table.jobId, table.studentId),
-}));
+import { ObjectId } from "mongodb";
+import { z } from "zod";
 
-export const insertApplicationSchema = createInsertSchema(applicationsTable).omit({ id: true, appliedAt: true });
-export type InsertApplication = z.infer<typeof insertApplicationSchema>;
-export type Application = typeof applicationsTable.$inferSelect;
+/**
+ * Application statuses
+ */
+export const APPLICATION_STATUSES = [
+  "pending",
+  "reviewed",
+  "shortlisted",
+  "rejected",
+] as const;
+
+export type ApplicationStatus =
+  (typeof APPLICATION_STATUSES)[number];
+
+/**
+ * MongoDB Application document
+ */
+export interface Application {
+  _id?: ObjectId;
+
+  jobId: ObjectId;
+  studentId: ObjectId;
+
+  status: ApplicationStatus;
+
+  appliedAt: Date;
+}
+
+/**
+ * Validation schema for creating an application
+ */
+export const insertApplicationSchema = z.object({
+  jobId: z.instanceof(ObjectId),
+  studentId: z.instanceof(ObjectId),
+
+  status: z.enum(APPLICATION_STATUSES).default("pending"),
+
+  appliedAt: z.coerce.date().optional(),
+});
+
+export type InsertApplication = z.infer<
+  typeof insertApplicationSchema
+>;

@@ -1,19 +1,45 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const studentProjectsTable = pgTable("student_projects", {
-  id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  technologies: text("technologies").array().notNull().default([]),
-  githubUrl: text("github_url"),
-  liveUrl: text("live_url"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+import { ObjectId } from "mongodb";
+import { z } from "zod";
+
+/**
+ * MongoDB Student Project document
+ */
+export interface StudentProject {
+  _id?: ObjectId;
+
+  studentId: ObjectId;
+
+  title: string;
+  description: string;
+
+  technologies: string[];
+
+  githubUrl?: string | null;
+  liveUrl?: string | null;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Validation schema
+ */
+export const insertStudentProjectSchema = z.object({
+  studentId: z.instanceof(ObjectId),
+
+  title: z.string().min(1, "Project title is required"),
+  description: z.string().min(1, "Project description is required"),
+
+  technologies: z.array(z.string()).default([]),
+
+  githubUrl: z.string().nullable().optional(),
+  liveUrl: z.string().nullable().optional(),
+
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
 });
 
-export const insertStudentProjectSchema = createInsertSchema(studentProjectsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertStudentProject = z.infer<typeof insertStudentProjectSchema>;
-export type StudentProject = typeof studentProjectsTable.$inferSelect;
+export type InsertStudentProject = z.infer<
+  typeof insertStudentProjectSchema
+>;

@@ -1,37 +1,91 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const usersTable = pgTable("users", {
-  id: serial("id").primaryKey(),
-  clerkId: text("clerk_id").notNull().unique(),
-  email: text("email").notNull().unique(),
-  role: text("role").notNull(), // "student" | "recruiter"
-  displayName: text("display_name").notNull(),
-  companyName: text("company_name"),
-  photoUrl: text("photo_url"),
-  college: text("college"),
-  degree: text("degree"),
-  branch: text("branch"),
-  location: text("location"),
-  graduationYear: text("graduation_year"),
-  professionalSummary: text("professional_summary"),
-  skills: text("skills").array().notNull().default([]),
-  programmingLanguages: text("programming_languages").array().notNull().default([]),
-  frameworks: text("frameworks").array().notNull().default([]),
-  databases: text("databases").array().notNull().default([]),
-  tools: text("tools").array().notNull().default([]),
-  otherSkills: text("other_skills").array().notNull().default([]),
-  linkedinUrl: text("linkedin_url"),
-  githubUrl: text("github_url"),
-  portfolioUrl: text("portfolio_url"),
-  resumeUrl: text("resume_url"),
-  resumeFilename: text("resume_filename"),
-  isDiscoverable: boolean("is_discoverable").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+import { ObjectId } from "mongodb";
+import { z } from "zod";
+
+/**
+ * User roles
+ */
+export const USER_ROLES = ["student", "recruiter"] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
+
+/**
+ * MongoDB User document
+ */
+export interface User {
+  _id?: ObjectId;
+
+  clerkId: string;
+  email: string;
+  role: UserRole;
+
+  displayName: string;
+  companyName?: string | null;
+  photoUrl?: string | null;
+
+  college?: string | null;
+  degree?: string | null;
+  branch?: string | null;
+  location?: string | null;
+  graduationYear?: string | null;
+  professionalSummary?: string | null;
+
+  skills: string[];
+  programmingLanguages: string[];
+  frameworks: string[];
+  databases: string[];
+  tools: string[];
+  otherSkills: string[];
+
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  portfolioUrl?: string | null;
+
+  resumeUrl?: string | null;
+  resumeFilename?: string | null;
+
+  isDiscoverable: boolean;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Zod validation for creating a user
+ */
+export const insertUserSchema = z.object({
+  clerkId: z.string().min(1),
+  email: z.string().email(),
+
+  role: z.enum(USER_ROLES).default("student"),
+
+  displayName: z.string().min(1),
+
+  companyName: z.string().nullable().optional(),
+  photoUrl: z.string().nullable().optional(),
+
+  college: z.string().nullable().optional(),
+  degree: z.string().nullable().optional(),
+  branch: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  graduationYear: z.string().nullable().optional(),
+  professionalSummary: z.string().nullable().optional(),
+
+  skills: z.array(z.string()).default([]),
+  programmingLanguages: z.array(z.string()).default([]),
+  frameworks: z.array(z.string()).default([]),
+  databases: z.array(z.string()).default([]),
+  tools: z.array(z.string()).default([]),
+  otherSkills: z.array(z.string()).default([]),
+
+  linkedinUrl: z.string().nullable().optional(),
+  githubUrl: z.string().nullable().optional(),
+  portfolioUrl: z.string().nullable().optional(),
+
+  resumeUrl: z.string().nullable().optional(),
+  resumeFilename: z.string().nullable().optional(),
+
+  isDiscoverable: z.boolean().default(false),
 });
 
-export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof usersTable.$inferSelect;

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, useClerk, AuthenticateWithRedirectCallback } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, useClerk, useAuth, AuthenticateWithRedirectCallback } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { setDemoHeader } from "@workspace/api-client-react";
+import { setDemoHeader, setAuthTokenGetter } from "@workspace/api-client-react";
 
 import { AuthGuard } from "@/components/auth-guard";
 import { Navbar } from "@/components/navbar";
@@ -198,6 +198,24 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function ClerkAuthTokenSync() {
+  const { getToken, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (isSignedIn) {
+      setAuthTokenGetter(async () => {
+        try {
+          return await getToken();
+        } catch {
+          return null;
+        }
+      });
+    } else {
+      setAuthTokenGetter(null);
+    }
+  }, [getToken, isSignedIn]);
+  return null;
+}
+
 function DemoHeaderSync() {
   const { demoMode, role } = useAuthStore();
   useEffect(() => {
@@ -256,6 +274,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <ClerkAuthTokenSync />
         <DemoHeaderSync />
         <TooltipProvider>
           <AppRoutes />
@@ -273,7 +292,11 @@ function AppRoutes() {
             <Route path="/" component={HomeRedirect} />
             <Route path="/login" component={LoginPage} />
             <Route path="/register" component={RegisterPage} />
-            <Route path="/sso-callback" component={() => <AuthenticateWithRedirectCallback />} />
+            <Route path="/sso-callback" component={() => {
+              const { role } = useAuthStore.getState();
+              const target = role === "recruiter" ? "/recruiter" : "/home";
+              return <AuthenticateWithRedirectCallback redirectUrl={target} />;
+            }} />
 
             <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
             <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : RegisterPage} />
