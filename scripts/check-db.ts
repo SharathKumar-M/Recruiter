@@ -1,12 +1,15 @@
-import { db, usersTable } from "@workspace/db";
+import { connectDB, getUsersCollection, closeDB } from "@workspace/db";
 
 async function main() {
-  const users = await db.select().from(usersTable);
-  console.log("Users in DB:", users);
+  await connectDB();
+  const usersCol = await getUsersCollection();
+  const users = await usersCol.find({}).toArray();
+  console.log("Users in MongoDB:", users);
+  await closeDB();
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error("DB check error:", err);
+main().catch((err) => {
+  console.error("MongoDB check error:", err);
   process.exit(1);
 });

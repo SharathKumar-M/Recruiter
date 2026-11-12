@@ -1,18 +1,57 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const notificationsTable = pgTable("notifications", {
-  id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
-  notificationType: text("notification_type").notNull(), // "application_status" | "system" | "interview"
-  title: text("title").notNull(),
-  message: text("message").notNull(),
-  relatedId: integer("related_id"),
-  read: boolean("read").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+import { ObjectId } from "mongodb";
+import { z } from "zod";
+
+/**
+ * Supported notification types
+ */
+export const NOTIFICATION_TYPES = [
+  "application_status",
+  "system",
+  "interview",
+] as const;
+
+export type NotificationType =
+  (typeof NOTIFICATION_TYPES)[number];
+
+/**
+ * MongoDB Notification document
+ */
+export interface NotificationItem {
+  _id?: ObjectId;
+
+  studentId: ObjectId;
+
+  notificationType: NotificationType;
+
+  title: string;
+  message: string;
+
+  relatedId?: ObjectId | null;
+
+  read: boolean;
+
+  createdAt: Date;
+}
+
+/**
+ * Validation schema
+ */
+export const insertNotificationSchema = z.object({
+  studentId: z.instanceof(ObjectId),
+
+  notificationType: z.enum(NOTIFICATION_TYPES),
+
+  title: z.string().min(1, "Title is required"),
+  message: z.string().min(1, "Message is required"),
+
+  relatedId: z.instanceof(ObjectId).nullable().optional(),
+
+  read: z.boolean().default(false),
+
+  createdAt: z.coerce.date().optional(),
 });
 
-export const insertNotificationSchema = createInsertSchema(notificationsTable).omit({ id: true, createdAt: true });
-export type InsertNotification = z.infer<typeof insertNotificationSchema>;
-export type NotificationItem = typeof notificationsTable.$inferSelect;
+export type InsertNotification = z.infer<
+  typeof insertNotificationSchema
+>;

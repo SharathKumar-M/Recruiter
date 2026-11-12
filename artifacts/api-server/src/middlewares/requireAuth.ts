@@ -1,89 +1,201 @@
 import type { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { ObjectId } from "mongodb";
+import { getUsersCollection, getNextSequence } from "@workspace/db";
+import type { User, UserRole } from "@workspace/db/schema";
 
-async function resolveUser(req: Request): Promise<(typeof usersTable.$inferSelect) | null> {
-  // Dev bypass: if x-demo header is set and not in production, use or create seeded demo user
+type DbUser = User & {
+  _id: ObjectId;
+};
+
+/**
+ * Find or create a user using their Clerk ID.
+ */
+async function resolveUser(req: Request): Promise<DbUser | null> {
+  const users = await getUsersCollection();
+
+  // Development-only demo login
   const demoRole = req.headers["x-demo"] as string | undefined;
-  if (demoRole && process.env.NODE_ENV !== "production") {
-    const roleToUse = demoRole === "recruiter" ? "recruiter" : "student";
-    const demoUser = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.role, roleToUse))
-      .limit(1);
 
-    if (demoUser[0]) {
-      return demoUser[0];
+  if (demoRole && process.env.NODE_ENV !== "production") {
+    const roleToUse: UserRole = demoRole === "recruiter" ? "recruiter" : "student";
+
+    const existingDemoUser = await users.findOne({
+      role: roleToUse,
+      clerkId: { $regex: `^demo_${roleToUse}_` },
+    });
+
+    if (existingDemoUser) {
+      return existingDemoUser as DbUser;
     }
 
-    // Auto-seed demo user if none exists
-    const [created] = await db.insert(usersTable).values({
+    const now = new Date();
+    const seqId = await getNextSequence("users");
+
+    const demoUser = {
+      id: seqId,
       clerkId: `demo_${roleToUse}_${Date.now()}`,
       email: `${roleToUse}@verifai.com`,
       role: roleToUse,
       displayName: roleToUse === "recruiter" ? "Demo Recruiter" : "Demo Student",
       companyName: roleToUse === "recruiter" ? "Acme Corp" : null,
-      skills: ["TypeScript", "React", "Node.js", "PostgreSQL"],
-      college: roleToUse === "student" ? "Stanford University" : null,
-      degree: roleToUse === "student" ? "B.S. Computer Science" : null,
-      branch: roleToUse === "student" ? "Software Engineering" : null,
-      graduationYear: "2027",
-      professionalSummary: "Dedicated software engineering professional building modern full-stack web applications.",
+      photoUrl: null,
+      college: roleToUse === "student" ? "Government Engineering College Hassan" : null,
+      degree: roleToUse === "student" ? "B.E." : null,
+      branch: roleToUse === "student" ? "Computer Science" : null,
+      skills: ["JavaScript", "React", "Node.js", "MongoDB"],
+      programmingLanguages: ["JavaScript", "TypeScript"],
+      frameworks: ["React", "Express"],
+      databases: ["MongoDB"],
+      tools: ["Git", "GitHub"],
+      otherSkills: [],
       isDiscoverable: true,
-    }).returning();
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    return created;
+    const result = await users.insertOne(demoUser);
+
+    return {
+      ...demoUser,
+      _id: result.insertedId,
+    } as DbUser;
   }
 
+  // Clerk authentication
   const { userId } = getAuth(req);
-  if (!userId) return null;
 
-  let user = await db.select().from(usersTable).where(eq(usersTable.clerkId, userId)).limit(1);
-  if (user[0]) return user[0];
+  if (!userId) {
+    return null;
+  }
 
-  // Auto-provision user on first Clerk login
-  const [created] = await db.insert(usersTable).values({
+  let user = await users.findOne({
+    clerkId: userId,
+  });
+
+  if (user) {
+    return user as DbUser;
+  }
+
+  // Automatically create new users as students
+  const now = new Date();
+  const seqId = await getNextSequence("users");
+
+  const newUser = {
+    id: seqId,
     clerkId: userId,
     email: `${userId}@clerk.user`,
-    role: "student", // default role for new signup
+    role: "student" as const,
     displayName: "New User",
+    companyName: null,
+    photoUrl: null,
     skills: [],
+    programmingLanguages: [],
+    frameworks: [],
+    databases: [],
+    tools: [],
+    otherSkills: [],
     isDiscoverable: true,
-  }).returning();
+    createdAt: now,
+    updatedAt: now,
+  };
 
-  return created;
-}
+  try {
+    const result = await users.insertOne(newUser);
 
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const user = await resolveUser(req);
-  if (!user) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
+    user = await users.findOne({
+      _id: result.insertedId,
+    });
+  } catch (error: any) {
+    // Handle simultaneous first-time logins
+    if (error?.code !== 11000) {
+      throw error;
+    }
+
+    user = await users.findOne({
+      clerkId: userId,
+    });
   }
-  (req as any).dbUser = user;
-  next();
+
+  return user ? (user as DbUser) : null;
 }
 
-export async function requireStudent(req: Request, res: Response, next: NextFunction) {
-  await requireAuth(req, res, async () => {
-    const user = (req as any).dbUser;
-    if (user.role !== "student") {
-      res.status(403).json({ error: "Students only" });
+/**
+ * Authentication middleware
+ */
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const user = await resolveUser(req);
+
+    if (!user) {
+      res.status(401).json({
+        error: "Unauthorized",
+      });
       return;
     }
+
+    (req as any).dbUser = user;
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Student-only middleware
+ */
+export function requireStudent(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  requireAuth(req, res, (error?: any) => {
+    if (error) {
+      next(error);
+      return;
+    }
+
+    const user = (req as any).dbUser;
+
+    if (user.role !== "student") {
+      res.status(403).json({
+        error: "Students only",
+      });
+      return;
+    }
+
     next();
   });
 }
 
-export async function requireRecruiter(req: Request, res: Response, next: NextFunction) {
-  await requireAuth(req, res, async () => {
-    const user = (req as any).dbUser;
-    if (user.role !== "recruiter") {
-      res.status(403).json({ error: "Recruiters only" });
+/**
+ * Recruiter-only middleware
+ */
+export function requireRecruiter(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  requireAuth(req, res, (error?: any) => {
+    if (error) {
+      next(error);
       return;
     }
+
+    const user = (req as any).dbUser;
+
+    if (user.role !== "recruiter") {
+      res.status(403).json({
+        error: "Recruiters only",
+      });
+      return;
+    }
+
     next();
   });
 }

@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { db, usersTable, verificationsTable, certificatesTable, jobsTable, documentsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import {
+  getUsersCollection,
+  getVerificationsCollection,
+  getCertificatesCollection,
+  getJobsCollection,
+  getNextSequence,
+  toIdFilter,
+} from "@workspace/db";
 import { GenerateStudentInsightsBody } from "@workspace/api-zod";
 import { requireRecruiter, requireStudent } from "../middlewares/requireAuth";
 
@@ -8,7 +14,7 @@ const router = Router();
 
 function serializeVerification(v: any) {
   return {
-    id: v.id,
+    id: v.id ?? v._id?.toString(),
     studentId: v.studentId,
     trustScore: v.trustScore,
     verdict: v.verdict,
@@ -25,7 +31,6 @@ function serializeVerification(v: any) {
 }
 
 async function runAIVerification(student: any, certificates: any[]): Promise<any> {
-  // Build a profile summary for AI analysis
   const profileDetails = [
     `Name: ${student.displayName}`,
     `College: ${student.college ?? "Not specified"}`,
@@ -79,7 +84,6 @@ Return a JSON object ONLY (no markdown, no explanation) with this exact structur
     }
     throw new Error("No JSON in response");
   } catch (err) {
-    // Fallback: generate a basic analysis without AI
     const hasGitHub = !!student.githubUrl;
     const hasLinkedIn = !!student.linkedinUrl;
     const hasResume = !!student.resumeUrl;
@@ -139,19 +143,39 @@ Return a JSON object ONLY (no markdown, no explanation) with this exact structur
 router.post("/ai/analyze/:studentId", requireRecruiter, async (req, res) => {
   try {
     const recruiter = (req as any).dbUser;
-    const studentId = parseInt(req.params.studentId as string);
-    if (isNaN(studentId)) { res.status(400).json({ error: "Invalid student ID" }); return; }
+    const studentParam = req.params.studentId as string;
+    const [usersCol, certificatesCol, verificationsCol] = await Promise.all([
+      getUsersCollection(),
+      getCertificatesCollection(),
+      getVerificationsCollection(),
+    ]);
 
-    const [student] = await db.select().from(usersTable).where(eq(usersTable.id, studentId)).limit(1);
-    if (!student || student.role !== "student") { res.status(404).json({ error: "Student not found" }); return; }
+    const student = await usersCol.findOne({
+      $and: [toIdFilter(studentParam), { role: "student" }],
+    });
 
-    const certs = await db.select().from(certificatesTable).where(eq(certificatesTable.studentId, student.id));
+    if (!student) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
 
+    const studentIdConditions: any[] = [];
+    if (student.id !== undefined) studentIdConditions.push({ studentId: student.id });
+    if (student._id) {
+      studentIdConditions.push({ studentId: student._id });
+      studentIdConditions.push({ studentId: student._id.toString() });
+    }
+
+    const certs = await certificatesCol.find({ $or: studentIdConditions }).toArray();
     const aiResult = await runAIVerification(student, certs);
 
-    const [saved] = await db.insert(verificationsTable).values({
-      studentId: student.id,
-      recruiterId: recruiter.id,
+    const seqId = await getNextSequence("verifications");
+    const now = new Date();
+
+    const newVerification = {
+      id: seqId,
+      studentId: student.id ?? student._id,
+      recruiterId: recruiter.id ?? recruiter._id,
       trustScore: aiResult.trust_score,
       verdict: aiResult.verdict,
       summary: aiResult.summary,
@@ -162,9 +186,11 @@ router.post("/ai/analyze/:studentId", requireRecruiter, async (req, res) => {
       githubCheck: aiResult.github_check,
       certificatesCheck: aiResult.certificates_check,
       recommendation: aiResult.recommendation,
-    }).returning();
+      analyzedAt: now,
+    };
 
-    res.json(serializeVerification(saved));
+    const result = await verificationsCol.insertOne(newVerification);
+    res.json(serializeVerification({ ...newVerification, _id: result.insertedId }));
   } catch (err) {
     req.log.error({ err }, "ai analyze error");
     res.status(500).json({ error: "Internal server error" });
@@ -173,15 +199,30 @@ router.post("/ai/analyze/:studentId", requireRecruiter, async (req, res) => {
 
 router.get("/ai/result/:studentId", requireRecruiter, async (req, res) => {
   try {
-    const studentId = parseInt(req.params.studentId as string);
-    if (isNaN(studentId)) { res.status(400).json({ error: "Invalid student ID" }); return; }
+    const studentParam = req.params.studentId as string;
+    const [usersCol, verificationsCol] = await Promise.all([
+      getUsersCollection(),
+      getVerificationsCollection(),
+    ]);
 
-    const [result] = await db.select().from(verificationsTable)
-      .where(eq(verificationsTable.studentId, studentId))
-      .orderBy(desc(verificationsTable.analyzedAt))
-      .limit(1);
+    const student = await usersCol.findOne(toIdFilter(studentParam));
+    const studentIdConditions: any[] = [];
+    if (student?.id !== undefined) studentIdConditions.push({ studentId: student.id });
+    if (student?._id) {
+      studentIdConditions.push({ studentId: student._id });
+      studentIdConditions.push({ studentId: student._id.toString() });
+    }
+    studentIdConditions.push(toIdFilter(studentParam));
 
-    if (!result) { res.status(404).json({ error: "No verification result found" }); return; }
+    const result = await verificationsCol.findOne(
+      { $or: studentIdConditions },
+      { sort: { analyzedAt: -1 } }
+    );
+
+    if (!result) {
+      res.status(404).json({ error: "No verification result found" });
+      return;
+    }
 
     res.json(serializeVerification(result));
   } catch (err) {
@@ -193,12 +234,32 @@ router.get("/ai/result/:studentId", requireRecruiter, async (req, res) => {
 router.post("/ai/student-insights", requireStudent, async (req, res) => {
   try {
     const parsed = GenerateStudentInsightsBody.safeParse(req.body ?? {});
-    if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+
     const student = (req as any).dbUser;
-    const certs = await db.select().from(certificatesTable).where(eq(certificatesTable.studentId, student.id));
+    const [certificatesCol, jobsCol] = await Promise.all([
+      getCertificatesCollection(),
+      getJobsCollection(),
+    ]);
+
+    const studentIdConditions: any[] = [];
+    if (student.id !== undefined) studentIdConditions.push({ studentId: student.id });
+    if (student._id) {
+      studentIdConditions.push({ studentId: student._id });
+      studentIdConditions.push({ studentId: student._id.toString() });
+    }
+
+    const certs = await certificatesCol.find({ $or: studentIdConditions }).toArray();
     const jobId = parsed.data.jobId;
-    const [job] = jobId ? await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1) : [null];
-    if (jobId && (!job || !job.isActive)) { res.status(404).json({ error: "Active job not found" }); return; }
+    const job = jobId ? await jobsCol.findOne(toIdFilter(jobId)) : null;
+
+    if (jobId && (!job || !job.isActive)) {
+      res.status(404).json({ error: "Active job not found" });
+      return;
+    }
 
     const documentedSkills = (student.skills ?? []).map((skill: string) => skill.trim()).filter(Boolean);
     const requiredSkills = job?.skills ?? [];
@@ -241,13 +302,14 @@ router.post("/ai/student-insights", requireStudent, async (req, res) => {
   ],
   "stackLinks": [
     {"name": "React & Next.js Docs", "url": "https://react.dev"},
-    {"name": "Node.js & Express", "url": "https://nodejs.org/docs"}
+    {"name": "Node.js & Express", "url": "https://nodejs.org/docs"},
+    {"name": "MongoDB Atlas & Mongoose", "url": "https://www.mongodb.com/docs/"}
   ],
   "missingStacks": [
     {"stack": "Docker & DevOps", "reason": "Not listed in your skills or projects, essential for production deployments."}
   ],
   "projectRecommendations": [
-    {"title": "Cloud-Native SaaS Dashboard", "description": "Build an end-to-end full-stack app with auth and database integration.", "skills": ["React", "Node.js", "PostgreSQL"]}
+    {"title": "Cloud-Native SaaS Dashboard", "description": "Build an end-to-end full-stack app with auth and database integration.", "skills": ["React", "Node.js", "MongoDB"]}
   ],
   "resumeInsight": {
     "available": true,
@@ -269,7 +331,7 @@ Job context: ${job ? JSON.stringify({ title: job.title, company: job.company, de
           }),
         });
         if (response.ok) {
-          const data = await response.json() as any;
+          const data = (await response.json()) as any;
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) {
             const match = text.match(/\{[\s\S]*\}/);
@@ -288,7 +350,6 @@ Job context: ${job ? JSON.stringify({ title: job.title, company: job.company, de
       // Fallback if AI call fails
     }
 
-    // Fallback generator if AI service is not configured or fails
     if (!generated || !Array.isArray(generated.profileInsights)) {
       const hasGitHub = Boolean(student.githubUrl);
       const hasLinkedIn = Boolean(student.linkedinUrl);
@@ -302,32 +363,35 @@ Job context: ${job ? JSON.stringify({ title: job.title, company: job.company, de
           hasLinkedIn ? "LinkedIn profile linked successfully." : "Add your LinkedIn profile to expand your professional network.",
           documentedSkills.length >= 3 ? `You have documented ${documentedSkills.length} skills.` : "Add more specific programming languages and frameworks to your skills list.",
         ],
-        reasoning: job ? `Match score is calculated based on overlap between your skills (${documentedSkills.join(', ') || 'none'}) and the job requirements (${requiredSkills.join(', ') || 'none'}).` : "General career guidance based on your profile competencies.",
+        reasoning: job ? `Match score is calculated based on overlap between your skills (${documentedSkills.join(", ") || "none"}) and the job requirements (${requiredSkills.join(", ") || "none"}).` : "General career guidance based on your profile competencies.",
         learningPriorities: missingSkills.length > 0 ? missingSkills.slice(0, 4) : ["Advanced System Architecture", "TypeScript Design Patterns", "CI/CD & Cloud Deployment"],
         interviewTopics: job ? [job.title, "System Design & Scalability", "Behavioral & Past Project Walkthroughs"] : ["Core Computer Science Fundamentals", "Problem Solving & Algorithms", "Full-Stack System Design"],
         roadmap: [
           { phase: "Phase 1: Profile & Core Competencies", description: "Complete all education, skills, and links in your student profile.", timeline: "Week 1" },
           { phase: "Phase 2: Portfolio & Missing Stacks", description: "Build 2-3 production-grade projects focusing on missing skills like Docker, Testing, and Cloud.", timeline: "Weeks 2-4" },
-          { phase: "Phase 3: Resume & Interview Prep", description: "Refine resume bullet points and practice mock technical interviews.", timeline: "Weeks 5-6" }
+          { phase: "Phase 3: Resume & Interview Prep", description: "Refine resume bullet points and practice mock technical interviews.", timeline: "Weeks 5-6" },
         ],
         youtubeSuggestions: [
           { title: "System Design Interview – Step By Step Guide", channel: "ByteByteGo / Alex Xu", url: "https://www.youtube.com/results?search_query=system+design+interview+guide" },
           { title: "Full Stack Web Development Masterclass", channel: "Traversy Media", url: "https://www.youtube.com/results?search_query=full+stack+web+development+masterclass" },
-          { title: "TypeScript Advanced Patterns & Best Practices", channel: "Fireship", url: "https://www.youtube.com/results?search_query=typescript+advanced+patterns" }
+          { title: "TypeScript Advanced Patterns & Best Practices", channel: "Fireship", url: "https://www.youtube.com/results?search_query=typescript+advanced+patterns" },
         ],
         stackLinks: [
           { name: "React Official Documentation", url: "https://react.dev" },
           { name: "Node.js & Express Guide", url: "https://nodejs.org" },
-          { name: "PostgreSQL & Drizzle ORM", url: "https://orm.drizzle.team" },
-          { name: "Docker Getting Started", url: "https://docs.docker.com/get-started/" }
+          { name: "MongoDB Atlas Documentation", url: "https://www.mongodb.com/docs/atlas/" },
+          { name: "Docker Getting Started", url: "https://docs.docker.com/get-started/" },
         ],
-        missingStacks: missingSkills.map(skill => ({ stack: skill, reason: `Required for "${job?.title || 'target roles'}" but not explicitly listed in your profile skills.` })).concat(
-          !hasGitHub ? [{ stack: "GitHub Portfolio", reason: "No GitHub repository linked to verify practical coding experience." }] : [],
-          !hasResume ? [{ stack: "Resume Document", reason: "Missing professional resume document upload." }] : []
-        ).slice(0, 5),
+        missingStacks: missingSkills
+          .map((skill: string) => ({ stack: skill, reason: `Required for "${job?.title || "target roles"}" but not explicitly listed in your profile skills.` }))
+          .concat(
+            !hasGitHub ? [{ stack: "GitHub Portfolio", reason: "No GitHub repository linked to verify practical coding experience." }] : [],
+            !hasResume ? [{ stack: "Resume Document", reason: "Missing professional resume document upload." }] : []
+          )
+          .slice(0, 5),
         projectRecommendations: [
-          { title: "Cloud-Native SaaS Application", description: "Build a scalable full-stack application with authentication, database storage, and automated deployment.", skills: ["React", "Node.js", "PostgreSQL", "Docker"] },
-          { title: "Real-Time Collaborative Dashboard", description: "Implement WebSockets or real-time event streaming with clean architecture and robust state management.", skills: ["TypeScript", "WebSockets", "Tailwind CSS"] }
+          { title: "Cloud-Native SaaS Application", description: "Build a scalable full-stack application with authentication, database storage, and automated deployment.", skills: ["React", "Node.js", "MongoDB", "Docker"] },
+          { title: "Real-Time Collaborative Dashboard", description: "Implement WebSockets or real-time event streaming with clean architecture and robust state management.", skills: ["TypeScript", "WebSockets", "Tailwind CSS"] },
         ],
         resumeInsight: {
           available: true,
@@ -335,25 +399,27 @@ Job context: ${job ? JSON.stringify({ title: job.title, company: job.company, de
           suggestions: [
             "Use clear metric-driven impact statements (e.g., 'Improved API response latency by 35%')",
             "Include direct links to live demo deployments and GitHub repositories",
-            "Group skills logically by Languages, Frameworks, Databases, and Tools"
-          ]
+            "Group skills logically by Languages, Frameworks, Databases, and Tools",
+          ],
         },
-        disclaimer: "AI-generated career roadmap and insights are based on your profile data and job selections. Provided for educational and career development purposes."
+        disclaimer: "AI-generated career roadmap and insights are based on your profile data and job selections. Provided for educational and career development purposes.",
       };
     }
 
     res.json({
       generatedAt: new Date().toISOString(),
       profileInsights: generated.profileInsights ?? [],
-      jobMatch: job ? {
-        jobId: job.id,
-        matchScore,
-        matchingSkills,
-        missingSkills,
-        reasoning: typeof generated.reasoning === "string" ? generated.reasoning : "Match calculated from documented skills.",
-        learningPriorities: Array.isArray(generated.learningPriorities) ? generated.learningPriorities : [],
-        interviewTopics: Array.isArray(generated.interviewTopics) ? generated.interviewTopics : [],
-      } : null,
+      jobMatch: job
+        ? {
+            jobId: job.id ?? job._id?.toString(),
+            matchScore,
+            matchingSkills,
+            missingSkills,
+            reasoning: typeof generated.reasoning === "string" ? generated.reasoning : "Match calculated from documented skills.",
+            learningPriorities: Array.isArray(generated.learningPriorities) ? generated.learningPriorities : [],
+            interviewTopics: Array.isArray(generated.interviewTopics) ? generated.interviewTopics : [],
+          }
+        : null,
       roadmap: Array.isArray(generated.roadmap) ? generated.roadmap : [],
       youtubeSuggestions: Array.isArray(generated.youtubeSuggestions) ? generated.youtubeSuggestions : [],
       stackLinks: Array.isArray(generated.stackLinks) ? generated.stackLinks : [],

@@ -1,22 +1,32 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { ObjectId } from "mongodb";
+import { z } from "zod";
 
-export const interviewsTable = pgTable("interviews", {
-  id: serial("id").primaryKey(),
-  applicationId: integer("application_id").notNull(),
-  recruiterId: integer("recruiter_id").notNull(),
-  studentId: integer("student_id").notNull(),
-  scheduledAt: text("scheduled_at").notNull(),
-  durationMinutes: integer("duration_minutes").notNull().default(30),
-  mode: text("mode").notNull().default("Online"), // Online | In-person
-  locationOrLink: text("location_or_link"),
-  notes: text("notes"),
-  status: text("status").notNull().default("scheduled"), // scheduled | completed | cancelled
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+export interface Interview {
+  _id?: ObjectId;
+  id?: number;
+  applicationId: number | string | ObjectId;
+  recruiterId: number | string | ObjectId;
+  studentId: number | string | ObjectId;
+  scheduledAt: string;
+  durationMinutes: number;
+  mode: string;
+  locationOrLink?: string | null;
+  notes?: string | null;
+  status: "scheduled" | "completed" | "cancelled";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const insertInterviewSchema = z.object({
+  applicationId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  recruiterId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  studentId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  scheduledAt: z.string().min(1, "Scheduled time is required"),
+  durationMinutes: z.number().default(30),
+  mode: z.string().default("Online"),
+  locationOrLink: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
 });
 
-export const insertInterviewSchema = createInsertSchema(interviewsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInterview = z.infer<typeof insertInterviewSchema>;
-export type Interview = typeof interviewsTable.$inferSelect;

@@ -1,17 +1,22 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { ObjectId } from "mongodb";
+import { z } from "zod";
 
-export const recruiterNotesTable = pgTable("recruiter_notes", {
-  id: serial("id").primaryKey(),
-  applicationId: integer("application_id").notNull(),
-  recruiterId: integer("recruiter_id").notNull(),
-  note: text("note").notNull(),
-  tags: text("tags").array().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+export interface RecruiterNote {
+  _id?: ObjectId;
+  id?: number;
+  applicationId: number | string | ObjectId;
+  recruiterId: number | string | ObjectId;
+  note: string;
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const insertRecruiterNoteSchema = z.object({
+  applicationId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  recruiterId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  note: z.string().min(1, "Note is required"),
+  tags: z.array(z.string()).default([]),
 });
 
-export const insertRecruiterNoteSchema = createInsertSchema(recruiterNotesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertRecruiterNote = z.infer<typeof insertRecruiterNoteSchema>;
-export type RecruiterNote = typeof recruiterNotesTable.$inferSelect;

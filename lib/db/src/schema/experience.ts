@@ -1,20 +1,47 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const studentExperienceTable = pgTable("student_experience", {
-  id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
-  organization: text("organization").notNull(),
-  role: text("role").notNull(),
-  description: text("description").notNull(),
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date"),
-  current: boolean("current").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+import { ObjectId } from "mongodb";
+import { z } from "zod";
+
+/**
+ * MongoDB Student Experience document
+ */
+export interface StudentExperience {
+  _id?: ObjectId;
+
+  studentId: ObjectId;
+
+  organization: string;
+  role: string;
+  description: string;
+
+  startDate: string;
+  endDate?: string | null;
+
+  current: boolean;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Validation schema
+ */
+export const insertStudentExperienceSchema = z.object({
+  studentId: z.instanceof(ObjectId),
+
+  organization: z.string().min(1, "Organization is required"),
+  role: z.string().min(1, "Role is required"),
+  description: z.string().min(1, "Description is required"),
+
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().nullable().optional(),
+
+  current: z.boolean().default(false),
+
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
 });
 
-export const insertStudentExperienceSchema = createInsertSchema(studentExperienceTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertStudentExperience = z.infer<typeof insertStudentExperienceSchema>;
-export type StudentExperience = typeof studentExperienceTable.$inferSelect;
+export type InsertStudentExperience = z.infer<
+  typeof insertStudentExperienceSchema
+>;

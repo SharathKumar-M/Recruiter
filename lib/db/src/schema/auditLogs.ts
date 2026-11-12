@@ -1,17 +1,23 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { ObjectId } from "mongodb";
+import { z } from "zod";
 
-export const auditLogsTable = pgTable("audit_logs", {
-  id: serial("id").primaryKey(),
-  recruiterId: integer("recruiter_id").notNull(),
-  action: text("action").notNull(),
-  resourceType: text("resource_type").notNull(),
-  resourceId: integer("resource_id"),
-  details: text("details"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+export interface AuditLog {
+  _id?: ObjectId;
+  id?: number;
+  recruiterId: number | string | ObjectId;
+  action: string;
+  resourceType: string;
+  resourceId?: string | number | null;
+  details?: string | null;
+  createdAt: Date;
+}
+
+export const insertAuditLogSchema = z.object({
+  recruiterId: z.union([z.number(), z.string(), z.instanceof(ObjectId)]),
+  action: z.string().min(1, "Action is required"),
+  resourceType: z.string().min(1, "Resource type is required"),
+  resourceId: z.union([z.number(), z.string()]).nullable().optional(),
+  details: z.string().nullable().optional(),
 });
 
-export const insertAuditLogSchema = createInsertSchema(auditLogsTable).omit({ id: true, createdAt: true });
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
-export type AuditLog = typeof auditLogsTable.$inferSelect;
