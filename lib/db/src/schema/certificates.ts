@@ -1,15 +1,43 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const certificatesTable = pgTable("certificates", {
-  id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
-  filename: text("filename").notNull(),
-  url: text("url").notNull(),
-  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+import { ObjectId } from "mongodb";
+import { z } from "zod";
+
+/**
+ * MongoDB Certificate document
+ */
+export interface Certificate {
+  _id?: ObjectId;
+
+  studentId: ObjectId;
+
+  title?: string | null;
+  issuingOrganization?: string | null;
+  issueDate?: string | null;
+  documentReference?: string | null;
+
+  filename: string;
+  url: string;
+
+  uploadedAt: Date;
+}
+
+/**
+ * Validation schema for creating a certificate
+ */
+export const insertCertificateSchema = z.object({
+  studentId: z.instanceof(ObjectId),
+
+  title: z.string().nullable().optional(),
+  issuingOrganization: z.string().nullable().optional(),
+  issueDate: z.string().nullable().optional(),
+  documentReference: z.string().nullable().optional(),
+
+  filename: z.string().min(1, "Filename is required"),
+  url: z.string().min(1, "Certificate URL is required"),
+
+  uploadedAt: z.coerce.date().optional(),
 });
 
-export const insertCertificateSchema = createInsertSchema(certificatesTable).omit({ id: true, uploadedAt: true });
-export type InsertCertificate = z.infer<typeof insertCertificateSchema>;
-export type Certificate = typeof certificatesTable.$inferSelect;
+export type InsertCertificate = z.infer<
+  typeof insertCertificateSchema
+>;

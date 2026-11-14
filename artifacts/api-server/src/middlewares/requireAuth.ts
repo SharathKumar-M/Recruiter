@@ -1,64 +1,201 @@
 import type { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { ObjectId } from "mongodb";
+import { getUsersCollection, getNextSequence } from "@workspace/db";
+import type { User, UserRole } from "@workspace/db/schema";
 
-async function resolveUser(req: Request): Promise<(typeof usersTable.$inferSelect) | null> {
-  // Dev bypass: if x-demo header is set and not in production, use seeded demo user
+type DbUser = User & {
+  _id: ObjectId;
+};
+
+/**
+ * Find or create a user using their Clerk ID.
+ */
+async function resolveUser(req: Request): Promise<DbUser | null> {
+  const users = await getUsersCollection();
+
+  // Development-only demo login
   const demoRole = req.headers["x-demo"] as string | undefined;
+
   if (demoRole && process.env.NODE_ENV !== "production") {
-    const demoUser = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.role, demoRole as "student" | "recruiter"))
-      .limit(1);
-    return demoUser[0] ?? null;
+    const roleToUse: UserRole = demoRole === "recruiter" ? "recruiter" : "student";
+
+    const existingDemoUser = await users.findOne({
+      role: roleToUse,
+      clerkId: { $regex: `^demo_${roleToUse}_` },
+    });
+
+    if (existingDemoUser) {
+      return existingDemoUser as DbUser;
+    }
+
+    const now = new Date();
+    const seqId = await getNextSequence("users");
+
+    const demoUser = {
+      id: seqId,
+      clerkId: `demo_${roleToUse}_${Date.now()}`,
+      email: `${roleToUse}@verifai.com`,
+      role: roleToUse,
+      displayName: roleToUse === "recruiter" ? "Demo Recruiter" : "Demo Student",
+      companyName: roleToUse === "recruiter" ? "Acme Corp" : null,
+      photoUrl: null,
+      college: roleToUse === "student" ? "Government Engineering College Hassan" : null,
+      degree: roleToUse === "student" ? "B.E." : null,
+      branch: roleToUse === "student" ? "Computer Science" : null,
+      skills: ["JavaScript", "React", "Node.js", "MongoDB"],
+      programmingLanguages: ["JavaScript", "TypeScript"],
+      frameworks: ["React", "Express"],
+      databases: ["MongoDB"],
+      tools: ["Git", "GitHub"],
+      otherSkills: [],
+      isDiscoverable: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await users.insertOne(demoUser);
+
+    return {
+      ...demoUser,
+      _id: result.insertedId,
+    } as DbUser;
   }
 
+  // Clerk authentication
   const { userId } = getAuth(req);
-  if (!userId) return null;
 
-  const user = await db.select().from(usersTable).where(eq(usersTable.clerkId, userId)).limit(1);
-  return user[0] ?? null;
+  if (!userId) {
+    return null;
+  }
+
+  let user = await users.findOne({
+    clerkId: userId,
+  });
+
+  if (user) {
+    return user as DbUser;
+  }
+
+  // Automatically create new users as students
+  const now = new Date();
+  const seqId = await getNextSequence("users");
+
+  const newUser = {
+    id: seqId,
+    clerkId: userId,
+    email: `${userId}@clerk.user`,
+    role: "student" as const,
+    displayName: "New User",
+    companyName: null,
+    photoUrl: null,
+    skills: [],
+    programmingLanguages: [],
+    frameworks: [],
+    databases: [],
+    tools: [],
+    otherSkills: [],
+    isDiscoverable: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    const result = await users.insertOne(newUser);
+
+    user = await users.findOne({
+      _id: result.insertedId,
+    });
+  } catch (error: any) {
+    // Handle simultaneous first-time logins
+    if (error?.code !== 11000) {
+      throw error;
+    }
+
+    user = await users.findOne({
+      clerkId: userId,
+    });
+  }
+
+  return user ? (user as DbUser) : null;
 }
 
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const demoRole = req.headers["x-demo"] as string | undefined;
-  if (!demoRole || process.env.NODE_ENV === "production") {
-    const { userId } = getAuth(req);
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
+/**
+ * Authentication middleware
+ */
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const user = await resolveUser(req);
+
+    if (!user) {
+      res.status(401).json({
+        error: "Unauthorized",
+      });
       return;
     }
-  }
 
-  const user = await resolveUser(req);
-  if (!user) {
-    res.status(401).json({ error: "User not found in database. Please sync first." });
-    return;
+    (req as any).dbUser = user;
+
+    next();
+  } catch (error) {
+    next(error);
   }
-  (req as any).dbUser = user;
-  next();
 }
 
-export async function requireStudent(req: Request, res: Response, next: NextFunction) {
-  await requireAuth(req, res, async () => {
+/**
+ * Student-only middleware
+ */
+export function requireStudent(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  requireAuth(req, res, (error?: any) => {
+    if (error) {
+      next(error);
+      return;
+    }
+
     const user = (req as any).dbUser;
+
     if (user.role !== "student") {
-      res.status(403).json({ error: "Students only" });
+      res.status(403).json({
+        error: "Students only",
+      });
       return;
     }
+
     next();
   });
 }
 
-export async function requireRecruiter(req: Request, res: Response, next: NextFunction) {
-  await requireAuth(req, res, async () => {
-    const user = (req as any).dbUser;
-    if (user.role !== "recruiter") {
-      res.status(403).json({ error: "Recruiters only" });
+/**
+ * Recruiter-only middleware
+ */
+export function requireRecruiter(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  requireAuth(req, res, (error?: any) => {
+    if (error) {
+      next(error);
       return;
     }
+
+    const user = (req as any).dbUser;
+
+    if (user.role !== "recruiter") {
+      res.status(403).json({
+        error: "Recruiters only",
+      });
+      return;
+    }
+
     next();
   });
 }

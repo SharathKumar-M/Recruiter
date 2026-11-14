@@ -550,3 +550,41 @@ export const GetAIResultResponse = zod.object({
 })
 
 
+/**
+ * @summary Generate career guidance for the authenticated student
+ */
+export const GenerateStudentInsightsBody = zod.object({
+  "jobId": zod.number().optional()
+})
+
+export const generateStudentInsightsResponseJobMatchOneMatchScoreMin = 0;
+export const generateStudentInsightsResponseJobMatchOneMatchScoreMax = 100;
+
+
+
+export const GenerateStudentInsightsResponse = zod.object({
+  "generatedAt": zod.string(),
+  "profileInsights": zod.array(zod.string()),
+  "jobMatch": zod.union([zod.object({
+  "jobId": zod.number(),
+  "matchScore": zod.number().min(generateStudentInsightsResponseJobMatchOneMatchScoreMin).max(generateStudentInsightsResponseJobMatchOneMatchScoreMax),
+  "matchingSkills": zod.array(zod.string()),
+  "missingSkills": zod.array(zod.string()),
+  "reasoning": zod.string(),
+  "learningPriorities": zod.array(zod.string()),
+  "interviewTopics": zod.array(zod.string())
+}),zod.null()]).optional(),
+  "projectRecommendations": zod.array(zod.object({
+  "title": zod.string(),
+  "description": zod.string(),
+  "skills": zod.array(zod.string())
+})),
+  "resumeInsight": zod.object({
+  "available": zod.boolean(),
+  "message": zod.string(),
+  "suggestions": zod.array(zod.string())
+}),
+  "disclaimer": zod.string()
+})
+
+

@@ -1,3 +1,4 @@
+
 {
   "name": "@workspace/db",
   "version": "0.0.0",
@@ -7,19 +8,13 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts"
   },
-  "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
-  },
+  "scripts": {},
   "dependencies": {
-    "drizzle-orm": "catalog:",
-    "drizzle-zod": "^0.8.3",
-    "pg": "^8.20.0",
+    "dotenv": "^18.0.9",
+    "mongodb": "^7.7.0",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "@types/pg": "^8.20.0",
-    "drizzle-kit": "^0.31.10"
+    "@types/node": "catalog:"
   }
 }

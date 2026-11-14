@@ -1,27 +1,38 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, useClerk, useAuth, AuthenticateWithRedirectCallback } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { setDemoHeader } from "@workspace/api-client-react";
+import { setDemoHeader, setAuthTokenGetter } from "@workspace/api-client-react";
 
 import { AuthGuard } from "@/components/auth-guard";
 import { Navbar } from "@/components/navbar";
+import { StudentShell } from "@/components/student-shell";
 import { useAuthStore } from "@/hooks/use-auth-store";
 
 // Pages
 import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import StudentHome from "@/pages/student/home";
 import StudentProfile from "@/pages/student/profile";
+import StudentJobs from "@/pages/student/jobs";
+import StudentApplications from "@/pages/student/applications";
+import StudentInsights from "@/pages/student/insights";
+import StudentDocuments from "@/pages/student/documents";
+import StudentNotifications from "@/pages/student/notifications";
+import StudentSettings from "@/pages/student/settings";
+
 import RecruiterDashboard from "@/pages/recruiter/dashboard";
 import RecruiterJobs from "@/pages/recruiter/jobs";
 import RecruiterProfile from "@/pages/recruiter/profile";
 import NotFound from "@/pages/not-found";
 
-const configuredClerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const configuredClerkKey =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  import.meta.env.CLERK_PUBLISHABLE_KEY;
 const clerkPubKey = configuredClerkKey
   ? publishableKeyFromHost(window.location.hostname, configuredClerkKey)
   : undefined;
@@ -73,10 +84,29 @@ const clerkAppearance = {
 
 function SignInPage() {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-50">
-      <Navbar />
-      <div className="flex-1 flex items-center justify-center p-4">
-        <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    <div className="min-h-[100dvh] flex flex-col bg-slate-950 text-white relative overflow-hidden">
+      {/* 3D Cosmic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-violet-600/15 rounded-full blur-[150px] animate-pulse" style={{ animationDuration: "8s" }} />
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute bg-white rounded-full opacity-60"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              width: `${Math.random() * 2 + 1}px`,
+              height: `${Math.random() * 2 + 1}px`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="relative z-10 flex flex-col min-h-[100dvh]">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+        </div>
       </div>
     </div>
   );
@@ -84,10 +114,29 @@ function SignInPage() {
 
 function SignUpPage() {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-50">
-      <Navbar />
-      <div className="flex-1 flex items-center justify-center p-4">
-        <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    <div className="min-h-[100dvh] flex flex-col bg-slate-950 text-white relative overflow-hidden">
+      {/* 3D Cosmic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-violet-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-indigo-600/15 rounded-full blur-[150px] animate-pulse" style={{ animationDuration: "8s" }} />
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute bg-white rounded-full opacity-60"
+            style={{
+              top: `${Math.random() * 100}%`,
+              left: `${Math.random() * 100}%`,
+              width: `${Math.random() * 2 + 1}px`,
+              height: `${Math.random() * 2 + 1}px`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="relative z-10 flex flex-col min-h-[100dvh]">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+        </div>
       </div>
     </div>
   );
@@ -96,7 +145,7 @@ function SignUpPage() {
 function RegisterStudentPage() {
   const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
-  
+
   useEffect(() => {
     setRole("student");
     if (!clerkPubKey) {
@@ -106,14 +155,14 @@ function RegisterStudentPage() {
       setLocation("/sign-up");
     }
   }, [setRole, setDemoMode, setLocation]);
-  
+
   return null;
 }
 
 function RegisterRecruiterPage() {
   const { setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
-  
+
   useEffect(() => {
     setRole("recruiter");
     if (!clerkPubKey) {
@@ -123,7 +172,7 @@ function RegisterRecruiterPage() {
       setLocation("/sign-up");
     }
   }, [setRole, setDemoMode, setLocation]);
-  
+
   return null;
 }
 
@@ -146,6 +195,24 @@ function ClerkQueryClientCacheInvalidator() {
     return unsubscribe;
   }, [addListener, queryClient]);
 
+  return null;
+}
+
+function ClerkAuthTokenSync() {
+  const { getToken, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (isSignedIn) {
+      setAuthTokenGetter(async () => {
+        try {
+          return await getToken();
+        } catch {
+          return null;
+        }
+      });
+    } else {
+      setAuthTokenGetter(null);
+    }
+  }, [getToken, isSignedIn]);
   return null;
 }
 
@@ -207,6 +274,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <ClerkAuthTokenSync />
         <DemoHeaderSync />
         <TooltipProvider>
           <AppRoutes />
@@ -223,27 +291,63 @@ function AppRoutes() {
       <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/login" component={LoginPage} />
-            
+            <Route path="/register" component={RegisterPage} />
+            <Route path="/sso-callback" component={() => {
+              const { role } = useAuthStore.getState();
+              const target = role === "recruiter" ? "/recruiter" : "/home";
+              return <AuthenticateWithRedirectCallback redirectUrl={target} />;
+            }} />
+
             <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
-            <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : LoginPage} />
+            <Route path="/sign-up/*?" component={clerkPubKey ? SignUpPage : RegisterPage} />
             <Route path="/register/student" component={RegisterStudentPage} />
             <Route path="/register/recruiter" component={RegisterRecruiterPage} />
 
             <Route path="/home">
               <AuthGuard allowedRole="student">
-                <div className="min-h-[100dvh] flex flex-col bg-slate-50">
-                  <Navbar />
-                  <StudentHome />
-                </div>
+                <StudentShell title="Student Dashboard"><StudentHome /></StudentShell>
               </AuthGuard>
             </Route>
 
             <Route path="/profile">
               <AuthGuard allowedRole="student">
-                <div className="min-h-[100dvh] flex flex-col bg-slate-50">
-                  <Navbar />
-                  <StudentProfile />
-                </div>
+                <StudentShell title="My Profile"><StudentProfile /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/jobs">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Find Jobs"><StudentJobs /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/applications">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="My Applications"><StudentApplications /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/insights">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="AI Career Insights"><StudentInsights /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/documents">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Resume & Documents"><StudentDocuments /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/notifications">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Notifications"><StudentNotifications /></StudentShell>
+              </AuthGuard>
+            </Route>
+
+            <Route path="/settings">
+              <AuthGuard allowedRole="student">
+                <StudentShell title="Student Settings"><StudentSettings /></StudentShell>
               </AuthGuard>
             </Route>
 

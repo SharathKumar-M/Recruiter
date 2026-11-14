@@ -1,7 +1,5 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { getUsersCollection, getNextSequence } from "@workspace/db";
 import { SyncUserBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 
@@ -16,22 +14,39 @@ router.post("/auth/sync", async (req, res) => {
     }
     const { clerkId, email, role, displayName, companyName } = parsed.data;
 
-    const existing = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId)).limit(1);
-    if (existing[0]) {
-      res.json({ userId: existing[0].id, role: existing[0].role });
+    // Security check: ensure valid role
+    const assignedRole = role === "recruiter" ? "recruiter" : "student";
+
+    const users = await getUsersCollection();
+    const existing = await users.findOne({ clerkId });
+    if (existing) {
+      // Return existing database role to prevent privilege escalation / tampering
+      res.json({ userId: existing.id ?? existing._id.toString(), role: existing.role });
       return;
     }
 
-    const [created] = await db.insert(usersTable).values({
+    const seqId = await getNextSequence("users");
+    const now = new Date();
+    const newUser = {
+      id: seqId,
       clerkId,
       email,
-      role,
+      role: assignedRole,
       displayName,
       companyName: companyName ?? null,
       skills: [],
-    }).returning();
+      programmingLanguages: [],
+      frameworks: [],
+      databases: [],
+      tools: [],
+      otherSkills: [],
+      isDiscoverable: true,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    res.json({ userId: created.id, role: created.role });
+    await users.insertOne(newUser);
+    res.json({ userId: seqId, role: assignedRole });
   } catch (err) {
     req.log.error({ err }, "sync user error");
     res.status(500).json({ error: "Internal server error" });
@@ -42,22 +57,22 @@ router.get("/auth/me", requireAuth, async (req, res) => {
   try {
     const user = (req as any).dbUser;
     res.json({
-      id: user.id,
+      id: user.id ?? user._id?.toString(),
       clerkId: user.clerkId,
       email: user.email,
       role: user.role,
       displayName: user.displayName,
-      companyName: user.companyName,
-      college: user.college,
+      companyName: user.companyName ?? null,
+      college: user.college ?? null,
       skills: user.skills ?? [],
-      linkedinUrl: user.linkedinUrl,
-      githubUrl: user.githubUrl,
-      portfolioUrl: user.portfolioUrl,
-      resumeUrl: user.resumeUrl,
-      resumeFilename: user.resumeFilename,
-      photoUrl: user.photoUrl,
-      appliedJobIds: [],
-      createdAt: user.createdAt.toISOString(),
+      linkedinUrl: user.linkedinUrl ?? null,
+      githubUrl: user.githubUrl ?? null,
+      portfolioUrl: user.portfolioUrl ?? null,
+      resumeUrl: user.resumeUrl ?? null,
+      resumeFilename: user.resumeFilename ?? null,
+      photoUrl: user.photoUrl ?? null,
+      appliedJobIds: user.appliedJobIds ?? [],
+      createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : (user.createdAt || new Date().toISOString()),
     });
   } catch (err) {
     req.log.error({ err }, "get me error");

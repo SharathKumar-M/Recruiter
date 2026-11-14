@@ -10,7 +10,10 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, allowedRole }: AuthGuardProps) {
-  const clerkEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+  const clerkEnabled = Boolean(
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+    import.meta.env.CLERK_PUBLISHABLE_KEY
+  );
 
   if (!clerkEnabled) {
     return <LocalAuthGuard allowedRole={allowedRole}>{children}</LocalAuthGuard>;
@@ -47,13 +50,17 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
 
   useEffect(() => {
     if (demoMode) return;
-    if (isLoaded && isSignedIn && user && role && !syncComplete) {
+    if (isLoaded && isSignedIn && user && !syncComplete) {
+      const activeRole = role || "student";
+      if (!role) {
+        useAuthStore.getState().setRole("student");
+      }
       syncUser.mutate(
         {
           data: {
             clerkId: user.id,
-            email: user.primaryEmailAddress?.emailAddress ?? "",
-            role: role,
+            email: user.primaryEmailAddress?.emailAddress ?? user.emailAddresses?.[0]?.emailAddress ?? "",
+            role: activeRole,
             displayName: user.fullName ?? user.firstName ?? "User",
           },
         },
@@ -61,8 +68,17 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
           onSuccess: () => {
             setSyncComplete(true);
           },
+          onError: (err) => {
+            console.error("User sync error (non-fatal):", err);
+            setSyncComplete(true);
+          },
         }
       );
+
+      const timer = setTimeout(() => {
+        setSyncComplete(true);
+      }, 3000);
+      return () => clearTimeout(timer);
     }
   }, [isLoaded, isSignedIn, user, role, syncComplete, syncUser, setSyncComplete, demoMode]);
 

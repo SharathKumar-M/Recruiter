@@ -32,6 +32,8 @@ import type {
   RecruiterProfile,
   RecruiterProfileInput,
   RecruiterStats,
+  StudentInsights,
+  StudentInsightsInput,
   StudentProfile,
   StudentProfileInput,
   StudentStats,
@@ -1555,4 +1557,75 @@ export function useGetAIResult<TData = Awaited<ReturnType<typeof getAIResult>>, 
 
 
 
+
+export const getGenerateStudentInsightsUrl = () => {
+
+
+
+
+  return `/api/ai/student-insights`
+}
+
+/**
+ * @summary Generate career guidance for the authenticated student
+ */
+export const generateStudentInsights = async (studentInsightsInput?: StudentInsightsInput, options?: RequestInit): Promise<StudentInsights> => {
+
+  return customFetch<StudentInsights>(getGenerateStudentInsightsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      studentInsightsInput,)
+  }
+);}
+
+
+
+
+export const getGenerateStudentInsightsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateStudentInsights>>, TError,{data?: BodyType<StudentInsightsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateStudentInsights>>, TError,{data?: BodyType<StudentInsightsInput>}, TContext> => {
+
+const mutationKey = ['generateStudentInsights'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateStudentInsights>>, {data?: BodyType<StudentInsightsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateStudentInsights(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateStudentInsightsMutationResult = NonNullable<Awaited<ReturnType<typeof generateStudentInsights>>>
+    export type GenerateStudentInsightsMutationBody = BodyType<StudentInsightsInput> | undefined
+    export type GenerateStudentInsightsMutationError = ErrorType<void>
+
+    /**
+ * @summary Generate career guidance for the authenticated student
+ */
+export const useGenerateStudentInsights = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateStudentInsights>>, TError,{data?: BodyType<StudentInsightsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateStudentInsights>>,
+        TError,
+        {data?: BodyType<StudentInsightsInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateStudentInsightsMutationOptions(options));
+    }
 

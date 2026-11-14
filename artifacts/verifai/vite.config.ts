@@ -41,6 +41,8 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   root: path.resolve(import.meta.dirname),
+  envDir: path.resolve(import.meta.dirname, "../.."),
+  envPrefix: ["VITE_", "CLERK_"],
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
@@ -52,8 +54,16 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: process.env.API_PROXY_TARGET ?? "http://localhost:8080",
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("error", (err) => {
+            console.error(
+              "[Vite Proxy] Failed to forward request to backend at http://127.0.0.1:8080. Make sure the backend server is running in terminal 1 (pnpm --filter @workspace/api-server dev). Error:",
+              err.message
+            );
+          });
+        },
       },
     },
     fs: {
