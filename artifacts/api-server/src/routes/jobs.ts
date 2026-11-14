@@ -26,7 +26,7 @@ interface JobDocument extends Document {
   jobType: string;
   salary?: string | null;
   skills: string[];
-  recruiterId: ObjectId;
+  recruiterId: ObjectId | string | number;
   isActive: boolean;
   applicantCount: number;
   postedAt: Date;
@@ -35,8 +35,8 @@ interface JobDocument extends Document {
 interface ApplicationDocument extends Document {
   _id?: ObjectId;
   id?: number;
-  jobId: ObjectId | number;
-  studentId: ObjectId | number;
+  jobId: ObjectId | string | number;
+  studentId: ObjectId | string | number;
   status: string;
   appliedAt: Date;
 }
@@ -220,13 +220,27 @@ router.get("/jobs/my-applications", requireStudent, async (req, res) => {
 
     const jobIds = applications.map((application) => application.jobId);
 
-    const objectIdJobIds = jobIds
-      .filter((id) => id instanceof ObjectId || (typeof id === "string" && ObjectId.isValid(id) && id.length === 24))
-      .map((id) => (id instanceof ObjectId ? id : new ObjectId(id)));
+    const objectIdJobIds: ObjectId[] = [];
+    const numberJobIds: number[] = [];
+    const stringJobIds: string[] = [];
 
-    const numberJobIds = jobIds
-      .filter((id) => typeof id === "number" || (!Number.isNaN(Number(id)) && Number.isInteger(Number(id))))
-      .map((id) => Number(id));
+    for (const id of jobIds) {
+      if (id instanceof ObjectId) {
+        objectIdJobIds.push(id);
+      } else if (typeof id === "number") {
+        numberJobIds.push(id);
+      } else if (typeof id === "string") {
+        const trimmed = id.trim();
+        if (ObjectId.isValid(trimmed) && trimmed.length === 24) {
+          objectIdJobIds.push(new ObjectId(trimmed));
+        }
+        const num = Number(trimmed);
+        if (!Number.isNaN(num) && Number.isInteger(num)) {
+          numberJobIds.push(num);
+        }
+        stringJobIds.push(trimmed);
+      }
+    }
 
     const orConditions: Document[] = [];
     if (objectIdJobIds.length > 0) {
@@ -234,6 +248,10 @@ router.get("/jobs/my-applications", requireStudent, async (req, res) => {
     }
     if (numberJobIds.length > 0) {
       orConditions.push({ id: { $in: numberJobIds } });
+    }
+    if (stringJobIds.length > 0) {
+      orConditions.push({ id: { $in: stringJobIds } });
+      orConditions.push({ _id: { $in: stringJobIds } });
     }
 
     const jobs = orConditions.length > 0
@@ -277,7 +295,15 @@ router.get("/jobs/my-applications", requireStudent, async (req, res) => {
 router.post("/jobs/:jobId/apply", requireStudent, async (req, res) => {
   try {
     const user = (req as any).dbUser;
-    const jobIdParam = req.params.jobId;
+    const rawJobId = req.params.jobId;
+    const jobIdParam = Array.isArray(rawJobId) ? rawJobId[0] : rawJobId;
+
+    if (!jobIdParam || typeof jobIdParam !== "string") {
+      res.status(400).json({
+        error: "Job ID is required",
+      });
+      return;
+    }
 
     if (!user?._id) {
       res.status(401).json({
@@ -327,7 +353,7 @@ router.post("/jobs/:jobId/apply", requireStudent, async (req, res) => {
     const application: ApplicationDocument = {
       id: seqId,
       jobId,
-      studentId: studentId as any,
+      studentId,
       status: "pending",
       appliedAt: new Date(),
     };
