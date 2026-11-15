@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/hooks/use-auth-store";
-import { useSignIn } from "@clerk/react";
+import { useSignIn, useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { GraduationCap, Briefcase, Zap, Sparkles, Rocket, Globe, ShieldCheck, Mail } from "lucide-react";
@@ -22,13 +22,30 @@ export default function LoginPage() {
 }
 
 function ClerkLoginPage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const { signIn } = useSignIn() as { signIn: any };
-  return <LoginContent clerkEnabled={true} signIn={signIn} />;
+  return <LoginContent clerkEnabled={true} signIn={signIn} isLoaded={isLoaded} isSignedIn={isSignedIn} />;
 }
 
-function LoginContent({ clerkEnabled, signIn }: { clerkEnabled: boolean; signIn?: any }) {
-  const { setRole, setDemoMode } = useAuthStore();
+function LoginContent({
+  clerkEnabled,
+  signIn,
+  isLoaded,
+  isSignedIn,
+}: {
+  clerkEnabled: boolean;
+  signIn?: any;
+  isLoaded?: boolean;
+  isSignedIn?: boolean;
+}) {
+  const { role, setRole, setDemoMode } = useAuthStore();
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (clerkEnabled && isLoaded && isSignedIn) {
+      setLocation(role === "recruiter" ? "/recruiter" : "/home");
+    }
+  }, [isLoaded, isSignedIn, role, setLocation, clerkEnabled]);
 
   const handleGoogleLogin = async (roleType: "student" | "recruiter") => {
     setRole(roleType);

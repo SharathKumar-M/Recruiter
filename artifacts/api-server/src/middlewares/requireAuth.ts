@@ -69,53 +69,9 @@ async function resolveUser(req: Request): Promise<DbUser | null> {
     return null;
   }
 
-  let user = await users.findOne({
+  const user = await users.findOne({
     clerkId: userId,
   });
-
-  if (user) {
-    return user as DbUser;
-  }
-
-  // Automatically create new users as students
-  const now = new Date();
-  const seqId = await getNextSequence("users");
-
-  const newUser = {
-    id: seqId,
-    clerkId: userId,
-    email: `${userId}@clerk.user`,
-    role: "student" as const,
-    displayName: "New User",
-    companyName: null,
-    photoUrl: null,
-    skills: [],
-    programmingLanguages: [],
-    frameworks: [],
-    databases: [],
-    tools: [],
-    otherSkills: [],
-    isDiscoverable: true,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  try {
-    const result = await users.insertOne(newUser);
-
-    user = await users.findOne({
-      _id: result.insertedId,
-    });
-  } catch (error: any) {
-    // Handle simultaneous first-time logins
-    if (error?.code !== 11000) {
-      throw error;
-    }
-
-    user = await users.findOne({
-      clerkId: userId,
-    });
-  }
 
   return user ? (user as DbUser) : null;
 }

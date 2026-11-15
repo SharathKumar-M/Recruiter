@@ -189,6 +189,7 @@ function ClerkQueryClientCacheInvalidator() {
         prevUserIdRef.current !== userId
       ) {
         queryClient.clear();
+        useAuthStore.getState().logout();
       }
       prevUserIdRef.current = userId;
     });
