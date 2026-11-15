@@ -11,9 +11,15 @@ import {
   getNotificationsCollection,
   getNextSequence,
   toIdFilter,
+  uploadToGridFS,
+  downloadFromGridFS,
+  deleteFromGridFS,
 } from "@workspace/db";
 import { UpdateStudentProfileBody } from "@workspace/api-zod";
 import { requireStudent } from "../middlewares/requireAuth";
+import { parseMultipartFormData } from "../lib/multipartParser";
+import { extractTextFromFile } from "../lib/textExtractor";
+import { getStudentIdConditions, getStudentDocuments, getStudentResume } from "../lib/studentDocuments";
 
 const router = Router();
 
@@ -39,8 +45,8 @@ function serializeStudent(user: any, appliedJobIds: any[], certificates: any[], 
     linkedinUrl: user.linkedinUrl,
     githubUrl: user.githubUrl,
     portfolioUrl: user.portfolioUrl,
-    resumeUrl: user.resumeUrl || resumeDoc?.url || null,
-    resumeFilename: user.resumeFilename || resumeDoc?.filename || null,
+    resumeUrl: resumeDoc?.url || user.resumeUrl || null,
+    resumeFilename: resumeDoc?.filename || resumeDoc?.originalFilename || user.resumeFilename || null,
     photoUrl: user.photoUrl,
     appliedJobIds,
     certificates: certificates.map((c) => ({
@@ -55,16 +61,6 @@ function serializeStudent(user: any, appliedJobIds: any[], certificates: any[], 
     })),
     createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
   };
-}
-
-function getStudentIdConditions(user: any): any[] {
-  const conditions: any[] = [];
-  if (user.id !== undefined) conditions.push({ studentId: user.id });
-  if (user._id) {
-    conditions.push({ studentId: user._id });
-    conditions.push({ studentId: user._id.toString() });
-  }
-  return conditions;
 }
 
 router.get("/student/profile", requireStudent, async (req, res) => {
@@ -412,15 +408,18 @@ router.delete("/student/experience/:id", requireStudent, async (req, res) => {
 router.get("/student/documents", requireStudent, async (req, res) => {
   try {
     const user = (req as any).dbUser;
-    const col = await getDocumentsCollection();
-    const docs = await col.find({ $or: getStudentIdConditions(user) }).toArray();
+    const docs = await getStudentDocuments(user);
     res.json(
-      docs.map((d) => ({
+      docs.map((d: any) => ({
         id: d.id ?? d._id?.toString(),
         studentId: d.studentId,
         documentType: d.documentType,
         filename: d.filename,
-        url: d.url,
+        originalFilename: d.originalFilename || d.filename,
+        mimeType: d.mimeType || "application/octet-stream",
+        fileSize: d.fileSize || 0,
+        hasExtractedText: Boolean(d.extractedText && d.extractedText.trim().length > 0),
+        url: d.gridfsId ? `/api/student/documents/${d.id ?? d._id}/file` : d.url,
         metadata: d.metadata,
         uploadedAt: d.uploadedAt instanceof Date ? d.uploadedAt.toISOString() : d.uploadedAt,
       }))
@@ -434,34 +433,179 @@ router.get("/student/documents", requireStudent, async (req, res) => {
 router.post("/student/documents", requireStudent, async (req, res) => {
   try {
     const user = (req as any).dbUser;
+    const contentType = req.headers["content-type"] || "";
+    const isMultipart = contentType.includes("multipart/form-data");
+
+    const col = await getDocumentsCollection();
+    const usersCol = await getUsersCollection();
+    const seqId = await getNextSequence("documents");
+    const now = new Date();
+
+    if (isMultipart) {
+      const parsed = await parseMultipartFormData(req);
+      const file = parsed.file;
+      const documentType = (parsed.fields.documentType || "resume").toLowerCase().trim() as any;
+      const customFilename = parsed.fields.filename?.trim();
+
+      if (!file) {
+        res.status(400).json({ error: "No file was attached to the upload request" });
+        return;
+      }
+
+      // Store file in GridFS
+      const gridfsId = await uploadToGridFS(
+        customFilename || file.originalFilename,
+        file.buffer,
+        file.mimeType,
+        {
+          studentId: user.id ?? user._id,
+          documentType,
+          originalFilename: file.originalFilename,
+        }
+      );
+
+      // Extract text content from PDF, DOCX, TXT
+      const extraction = await extractTextFromFile(
+        file.originalFilename,
+        file.buffer,
+        file.mimeType
+      );
+
+      const fileUrl = `/api/student/documents/${seqId}/file`;
+      const docItem = {
+        id: seqId,
+        studentId: user.id ?? user._id,
+        documentType,
+        filename: customFilename || file.originalFilename,
+        originalFilename: file.originalFilename,
+        mimeType: file.mimeType,
+        fileSize: file.size,
+        gridfsId,
+        extractedText: extraction.success ? extraction.text : null,
+        extractedTextLength: extraction.charCount,
+        extractionError: extraction.success ? null : extraction.reason,
+        url: fileUrl,
+        metadata: null,
+        uploadedAt: now,
+        updatedAt: now,
+      };
+
+      const result = await col.insertOne(docItem);
+
+      // If document is resume, update user profile resume fields
+      if (documentType === "resume") {
+        await usersCol.updateOne(
+          toIdFilter(user.id ?? user._id),
+          {
+            $set: {
+              resumeUrl: fileUrl,
+              resumeFilename: docItem.filename,
+              updatedAt: now,
+            },
+          }
+        );
+      }
+
+      res.status(201).json({
+        ...docItem,
+        _id: result.insertedId,
+        hasExtractedText: extraction.success,
+        uploadedAt: now.toISOString(),
+      });
+      return;
+    }
+
+    // JSON fallback for backwards compatibility
     const { documentType, filename, url, metadata } = req.body ?? {};
     if (!documentType || !filename || !url) {
       res.status(400).json({ error: "Document type, filename, and URL are required" });
       return;
     }
 
-    const col = await getDocumentsCollection();
-    const seqId = await getNextSequence("documents");
-    const now = new Date();
-
     const newDoc = {
       id: seqId,
       studentId: user.id ?? user._id,
       documentType: String(documentType),
       filename: String(filename),
+      originalFilename: String(filename),
+      mimeType: "application/octet-stream",
+      fileSize: 0,
+      gridfsId: null,
+      extractedText: null,
+      extractedTextLength: 0,
+      extractionError: null,
       url: String(url),
       metadata: metadata ? String(metadata) : null,
       uploadedAt: now,
+      updatedAt: now,
     };
 
     const result = await col.insertOne(newDoc);
+
+    if (newDoc.documentType === "resume") {
+      await usersCol.updateOne(
+        toIdFilter(user.id ?? user._id),
+        {
+          $set: {
+            resumeUrl: newDoc.url,
+            resumeFilename: newDoc.filename,
+            updatedAt: now,
+          },
+        }
+      );
+    }
+
     res.status(201).json({
       ...newDoc,
       _id: result.insertedId,
       uploadedAt: now.toISOString(),
     });
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "upload document error");
+    res.status(500).json({ error: "Failed to upload document", details: err.message || String(err) });
+  }
+});
+
+// Authenticated document file download/view
+router.get("/student/documents/:id/file", requireStudent, async (req, res) => {
+  try {
+    const user = (req as any).dbUser;
+    const docId = req.params.id as string;
+    const col = await getDocumentsCollection();
+
+    const doc = await col.findOne({
+      $and: [toIdFilter(docId), { $or: getStudentIdConditions(user) }],
+    });
+
+    if (!doc) {
+      res.status(404).json({ error: "Document not found or access denied" });
+      return;
+    }
+
+    if (doc.gridfsId) {
+      const fileData = await downloadFromGridFS(doc.gridfsId);
+      if (fileData) {
+        res.setHeader("Content-Type", doc.mimeType || fileData.contentType);
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${encodeURIComponent(doc.filename || fileData.filename)}"`
+        );
+        res.setHeader("Content-Length", fileData.length);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        fileData.stream.pipe(res);
+        return;
+      }
+    }
+
+    // If external URL
+    if (doc.url && (doc.url.startsWith("http://") || doc.url.startsWith("https://"))) {
+      res.redirect(doc.url);
+      return;
+    }
+
+    res.status(404).json({ error: "Document content is not available in storage" });
+  } catch (err) {
+    req.log.error({ err }, "download student document error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -471,16 +615,57 @@ router.delete("/student/documents/:id", requireStudent, async (req, res) => {
     const user = (req as any).dbUser;
     const docId = req.params.id as string;
     const col = await getDocumentsCollection();
+    const usersCol = await getUsersCollection();
 
-    const result = await col.deleteOne({
+    const doc = await col.findOne({
       $and: [toIdFilter(docId), { $or: getStudentIdConditions(user) }],
     });
 
-    if (result.deletedCount === 0) {
+    if (!doc) {
       res.status(404).json({ error: "Document not found" });
       return;
     }
-    res.json({ success: true });
+
+    // Delete stored file from GridFS
+    if (doc.gridfsId) {
+      await deleteFromGridFS(doc.gridfsId);
+    }
+
+    await col.deleteOne({ _id: doc._id });
+
+    // Clear user resume fields if deleting the active resume
+    if (doc.documentType === "resume") {
+      const remainingResume = await col.findOne(
+        { $and: [{ documentType: "resume" }, { $or: getStudentIdConditions(user) }] },
+        { sort: { uploadedAt: -1 } }
+      );
+
+      if (remainingResume) {
+        await usersCol.updateOne(
+          toIdFilter(user.id ?? user._id),
+          {
+            $set: {
+              resumeUrl: remainingResume.url,
+              resumeFilename: remainingResume.filename,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      } else {
+        await usersCol.updateOne(
+          toIdFilter(user.id ?? user._id),
+          {
+            $set: {
+              resumeUrl: null,
+              resumeFilename: null,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      }
+    }
+
+    res.json({ success: true, message: "Document deleted successfully" });
   } catch (err) {
     req.log.error({ err }, "delete document error");
     res.status(500).json({ error: "Internal server error" });

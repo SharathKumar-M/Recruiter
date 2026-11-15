@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertCircle, Bot, BrainCircuit, CheckCircle2, CircleAlert, FileText, Lightbulb, RefreshCw, Sparkles, Target, Compass, Video, BookOpen, Layers, ExternalLink } from "lucide-react";
+import { AlertCircle, Bot, BrainCircuit, CheckCircle2, CircleAlert, FileText, Lightbulb, RefreshCw, Sparkles, Target, Compass, Video, BookOpen, Layers, ExternalLink, Clock } from "lucide-react";
 import { useGenerateStudentInsights, useGetStudentProfile, useListJobs } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ export default function StudentInsights() {
         <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center relative z-10">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-500/20 px-3.5 py-1 text-xs font-semibold text-indigo-300 border border-indigo-400/30">
-              <Sparkles className="h-3.5 w-3.5" /> Google Gemini AI Powered
+              <Sparkles className="h-3.5 w-3.5" /> {data?.analysisProvider ? `${data.analysisProvider.toUpperCase()} AI Powered` : "Gemini & OpenAI Configurable AI"}
             </div>
             <h2 className="mt-3 text-3xl font-extrabold tracking-tight md:text-4xl">AI Career Insights & Roadmap</h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
@@ -55,8 +55,9 @@ export default function StudentInsights() {
                 Target job listing
                 <select
                   value={jobId}
+                  disabled={insights.isPending}
                   onChange={(event) => setJobId(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none disabled:opacity-50"
                 >
                   <option value="">No job selected — general career roadmap & stack guidance</option>
                   {(jobs ?? []).map((job) => (
@@ -80,20 +81,61 @@ export default function StudentInsights() {
             </div>
           )}
 
-          {insights.isError && (
-            <Card className="border-amber-200 bg-amber-50 rounded-2xl">
-              <CardContent className="flex gap-4 p-6">
-                <AlertCircle className="h-6 w-6 shrink-0 text-amber-700 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-amber-900 text-base">AI insights are temporarily unavailable</h3>
-                  <p className="mt-1 text-sm text-amber-800">The AI service could not generate insights right now. Please try again.</p>
-                  <Button variant="outline" size="sm" className="mt-4 rounded-xl bg-white text-amber-900 border-amber-300 hover:bg-amber-100" onClick={generate}>
-                    Try again
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {insights.isError && (() => {
+            const errorObj = insights.error as any;
+            const errorStatus = errorObj?.status || errorObj?.data?.statusCode;
+            const is503 = errorStatus === 503 || String(errorObj?.data?.details || "").includes("503") || String(errorObj?.data?.error || "").includes("high demand");
+            const errorMessage = errorObj?.data?.error || (is503 ? "Gemini AI model is temporarily in high demand." : "AI generation encountered an error.");
+            const errorDetails = errorObj?.data?.details || errorObj?.message;
+
+            return (
+              <Card className={`rounded-2xl border ${is503 ? "border-amber-300 bg-amber-50/80" : "border-rose-200 bg-rose-50"}`}>
+                <CardContent className="flex gap-4 p-6">
+                  {is503 ? (
+                    <Clock className="h-6 w-6 shrink-0 text-amber-600 mt-0.5 animate-pulse" />
+                  ) : (
+                    <AlertCircle className="h-6 w-6 shrink-0 text-rose-700 mt-0.5" />
+                  )}
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className={`font-bold text-base ${is503 ? "text-amber-900" : "text-rose-900"}`}>
+                        {is503 ? "Gemini AI Model Temporarily Busy" : "AI Service Notice"}
+                      </h3>
+                      {is503 && (
+                        <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[10px] uppercase font-mono">
+                          HTTP 503: High Demand
+                        </Badge>
+                      )}
+                    </div>
+                    <p className={`text-sm leading-relaxed ${is503 ? "text-amber-900" : "text-rose-800"}`}>
+                      {errorMessage}
+                    </p>
+                    {errorDetails && errorDetails !== errorMessage && (
+                      <p className={`text-xs font-mono p-2 rounded-lg break-words ${is503 ? "bg-amber-100/60 text-amber-800" : "bg-rose-100/60 text-rose-800"}`}>
+                        {errorDetails}
+                      </p>
+                    )}
+                    <div className="pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={insights.isPending}
+                        className={`rounded-xl gap-2 font-medium cursor-pointer shadow-sm ${
+                          is503
+                            ? "bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+                            : "bg-white text-rose-900 border-rose-300 hover:bg-rose-100"
+                        }`}
+                        onClick={generate}
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${insights.isPending ? "animate-spin" : ""}`} />
+                        {insights.isPending ? "Retrying..." : "Try Again"}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {!data && !insights.isPending && (
             <Card className="border-dashed border-slate-300 bg-white rounded-3xl shadow-none">
@@ -103,7 +145,11 @@ export default function StudentInsights() {
                 <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
                   Click "Generate AI Insights" above to analyze your profile, discover missing tech stacks, get tailored YouTube tutorials, and view a structured career roadmap.
                 </p>
-                <Button onClick={generate} className="mt-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-semibold">
+                <Button
+                  onClick={generate}
+                  disabled={insights.isPending || profileLoading}
+                  className="mt-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-semibold cursor-pointer"
+                >
                   <Sparkles className="h-4 w-4" /> Generate now
                 </Button>
               </CardContent>

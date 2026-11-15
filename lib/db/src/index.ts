@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
-import { MongoClient, Db, Collection, ObjectId, type Document } from "mongodb";
+import { Readable } from "node:stream";
+import { MongoClient, Db, Collection, ObjectId, GridFSBucket, type Document } from "mongodb";
 
 // Load the root .env file from the API workspace directory.
 dotenv.config({
@@ -192,6 +193,84 @@ export async function getTalentPoolMembersCollection(): Promise<Collection<any>>
 export async function getAuditLogsCollection(): Promise<Collection<any>> {
   const db = await getDB();
   return db.collection("auditLogs");
+}
+
+// ── GridFS Storage for Documents ──────────────────────────────────────────────
+
+export async function getGridFSBucket(bucketName = "documents_files"): Promise<GridFSBucket> {
+  const db = await getDB();
+  return new GridFSBucket(db, { bucketName });
+}
+
+export async function uploadToGridFS(
+  filename: string,
+  buffer: Buffer,
+  contentType: string,
+  metadata?: Record<string, any>
+): Promise<ObjectId> {
+  const bucket = await getGridFSBucket();
+  return new Promise((resolve, reject) => {
+    const uploadStream = bucket.openUploadStream(filename, {
+      metadata: {
+        ...metadata,
+        contentType,
+        uploadedAt: new Date(),
+      },
+    });
+    const readable = Readable.from(buffer);
+    readable.pipe(uploadStream);
+    uploadStream.on("error", reject);
+    uploadStream.on("finish", () => {
+      resolve(uploadStream.id as ObjectId);
+    });
+  });
+}
+
+export async function downloadFromGridFS(
+  fileId: ObjectId | string
+): Promise<{ stream: NodeJS.ReadableStream; filename: string; contentType: string; length: number; metadata?: any } | null> {
+  const objId = toObjectId(fileId);
+  if (!objId) return null;
+  const bucket = await getGridFSBucket();
+  const files = await bucket.find({ _id: objId }).toArray();
+  if (files.length === 0) return null;
+  const file = files[0];
+  const stream = bucket.openDownloadStream(objId);
+  const detectedContentType = (file.metadata as any)?.contentType || "application/octet-stream";
+  return {
+    stream,
+    filename: file.filename,
+    contentType: detectedContentType,
+    length: file.length,
+    metadata: file.metadata,
+  };
+}
+
+export async function getGridFSBuffer(fileId: ObjectId | string): Promise<Buffer | null> {
+  const objId = toObjectId(fileId);
+  if (!objId) return null;
+  const bucket = await getGridFSBucket();
+  const files = await bucket.find({ _id: objId }).toArray();
+  if (files.length === 0) return null;
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const stream = bucket.openDownloadStream(objId);
+    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+export async function deleteFromGridFS(fileId: ObjectId | string): Promise<boolean> {
+  const objId = toObjectId(fileId);
+  if (!objId) return false;
+  try {
+    const bucket = await getGridFSBucket();
+    await bucket.delete(objId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

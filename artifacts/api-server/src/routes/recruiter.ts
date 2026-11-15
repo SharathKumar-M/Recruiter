@@ -4,15 +4,18 @@ import {
   getJobsCollection,
   getApplicationsCollection,
   getCertificatesCollection,
+  getDocumentsCollection,
   getRecruiterNotesCollection,
   getCandidateScorecardsCollection,
   getInterviewsCollection,
   getTalentPoolsCollection,
   getNextSequence,
   toIdFilter,
+  downloadFromGridFS,
 } from "@workspace/db";
 import { UpdateRecruiterProfileBody, UpdateApplicationStatusBody } from "@workspace/api-zod";
 import { requireRecruiter } from "../middlewares/requireAuth";
+import { getStudentIdConditions } from "../lib/studentDocuments";
 
 const router = Router();
 
@@ -116,11 +119,12 @@ router.get("/recruiter/jobs", requireRecruiter, async (req, res) => {
 router.get("/recruiter/applications", requireRecruiter, async (req, res) => {
   try {
     const user = (req as any).dbUser;
-    const [jobsCol, applicationsCol, usersCol, certificatesCol] = await Promise.all([
+    const [jobsCol, applicationsCol, usersCol, certificatesCol, documentsCol] = await Promise.all([
       getJobsCollection(),
       getApplicationsCollection(),
       getUsersCollection(),
       getCertificatesCollection(),
+      getDocumentsCollection(),
     ]);
 
     const myJobs = await jobsCol.find({ $or: getRecruiterIdConditions(user) }).toArray();
@@ -163,6 +167,21 @@ router.get("/recruiter/applications", requireRecruiter, async (req, res) => {
       if (s.id !== undefined) studentMap.set(String(s.id), s);
     }
 
+    const docFilters = studentIds.map((id) => ({
+      $or: [{ studentId: id }, ...(typeof id === "string" ? [{ studentId: id }] : [])],
+    }));
+
+    const resumeMap = new Map<string, any>();
+    if (docFilters.length > 0) {
+      const docs = await documentsCol.find({ $or: docFilters }).sort({ uploadedAt: -1 }).toArray();
+      for (const d of docs) {
+        const key = String(d.studentId);
+        if (d.documentType === "resume" && !resumeMap.has(key)) {
+          resumeMap.set(key, d);
+        }
+      }
+    }
+
     const certFilters = studentIds.map((id) => ({
       $or: [{ studentId: id }, ...(typeof id === "string" ? [{ studentId: id }] : [])],
     }));
@@ -197,6 +216,12 @@ router.get("/recruiter/applications", requireRecruiter, async (req, res) => {
         const s = studentMap.get(String(a.studentId));
         const j = jobMap.get(String(a.jobId));
         const studentKey = s ? String(s.id ?? s._id) : String(a.studentId);
+        const resumeDoc = resumeMap.get(studentKey);
+        const effectiveResumeUrl = resumeDoc
+          ? `/api/recruiter/documents/${resumeDoc.id ?? resumeDoc._id}/file`
+          : s?.resumeUrl || null;
+        const effectiveResumeFilename = resumeDoc?.filename || resumeDoc?.originalFilename || s?.resumeFilename || null;
+
         return {
           id: a.id ?? a._id?.toString(),
           jobId: a.jobId?.toString(),
@@ -214,8 +239,8 @@ router.get("/recruiter/applications", requireRecruiter, async (req, res) => {
                 linkedinUrl: s.linkedinUrl,
                 githubUrl: s.githubUrl,
                 portfolioUrl: s.portfolioUrl,
-                resumeUrl: s.resumeUrl,
-                resumeFilename: s.resumeFilename,
+                resumeUrl: effectiveResumeUrl,
+                resumeFilename: effectiveResumeFilename,
                 photoUrl: s.photoUrl,
                 appliedJobIds: appliedMap.get(studentKey) ?? [],
                 certificates: certMap.get(studentKey) ?? [],
@@ -750,6 +775,68 @@ router.post("/recruiter/pools", requireRecruiter, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "create talent pool error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Authenticated applicant document view for recruiter
+router.get("/recruiter/documents/:id/file", requireRecruiter, async (req, res) => {
+  try {
+    const user = (req as any).dbUser;
+    const docId = req.params.id as string;
+    const [documentsCol, jobsCol, applicationsCol] = await Promise.all([
+      getDocumentsCollection(),
+      getJobsCollection(),
+      getApplicationsCollection(),
+    ]);
+
+    const doc = await documentsCol.findOne(toIdFilter(docId));
+    if (!doc) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    // Verify recruiter has at least one application from this student
+    const myJobs = await jobsCol.find({ $or: getRecruiterIdConditions(user) }).toArray();
+    const myJobIds = myJobs.map((j) => j.id ?? j._id);
+    const myJobIdStrings = myJobs.map((j) => String(j.id ?? j._id));
+    const allJobIds = [...myJobIds, ...myJobIdStrings];
+
+    const hasApplicant = await applicationsCol.findOne({
+      $and: [
+        { jobId: { $in: allJobIds } },
+        { $or: getStudentIdConditions(doc.studentId) },
+      ],
+    });
+
+    if (!hasApplicant) {
+      res.status(403).json({ error: "Unauthorized: Candidate has not applied to any of your posted jobs." });
+      return;
+    }
+
+    if (doc.gridfsId) {
+      const fileData = await downloadFromGridFS(doc.gridfsId);
+      if (fileData) {
+        res.setHeader("Content-Type", doc.mimeType || fileData.contentType);
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${encodeURIComponent(doc.filename || fileData.filename)}"`
+        );
+        res.setHeader("Content-Length", fileData.length);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        fileData.stream.pipe(res);
+        return;
+      }
+    }
+
+    if (doc.url && (doc.url.startsWith("http://") || doc.url.startsWith("https://"))) {
+      res.redirect(doc.url);
+      return;
+    }
+
+    res.status(404).json({ error: "Document content is not available in storage" });
+  } catch (err) {
+    req.log.error({ err }, "download applicant document error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
