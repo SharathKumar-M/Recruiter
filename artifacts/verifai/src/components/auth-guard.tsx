@@ -49,7 +49,9 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
   }, [isLoaded, isSignedIn, setLocation, demoMode]);
 
   useEffect(() => {
-    if (demoMode) return;
+    if (demoMode) {
+      return undefined;
+    }
     if (isLoaded && isSignedIn && user && !syncComplete) {
       const activeRole = role || "student";
       if (!role) {
@@ -80,6 +82,7 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
       }, 3000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [isLoaded, isSignedIn, user, role, syncComplete, syncUser, setSyncComplete, demoMode]);
 
   useEffect(() => {

@@ -295,7 +295,14 @@ function AppRoutes() {
             <Route path="/sso-callback" component={() => {
               const { role } = useAuthStore.getState();
               const target = role === "recruiter" ? "/recruiter" : "/home";
-              return <AuthenticateWithRedirectCallback redirectUrl={target} />;
+              return (
+                <AuthenticateWithRedirectCallback
+                  signInFallbackRedirectUrl={target}
+                  signUpFallbackRedirectUrl={target}
+                  signInForceRedirectUrl={target}
+                  signUpForceRedirectUrl={target}
+                />
+              );
             }} />
 
             <Route path="/sign-in/*?" component={clerkPubKey ? SignInPage : LoginPage} />
