@@ -1,7 +1,20 @@
-import { Bell, Bot, BriefcaseBusiness, FileText, LayoutDashboard, Menu, Search, Settings, ShieldCheck, UserRound } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  BriefcaseBusiness,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { useAuthStore } from "@/hooks/use-auth-store";
+import { useClerk } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -52,7 +65,50 @@ function StudentNav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function StudentShell({ title, children }: { title: string; children: React.ReactNode }) {
-  const { logout, role } = useAuthStore();
+  const clerkEnabled = Boolean(
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+    import.meta.env.CLERK_PUBLISHABLE_KEY
+  );
+
+  return clerkEnabled ? (
+    <ClerkStudentShell title={title}>{children}</ClerkStudentShell>
+  ) : (
+    <LocalStudentShell title={title}>{children}</LocalStudentShell>
+  );
+}
+
+function ClerkStudentShell({ title, children }: { title: string; children: React.ReactNode }) {
+  const { signOut } = useClerk();
+  return (
+    <StudentShellContent
+      title={title}
+      onSignOut={async () => {
+        await signOut({ redirectUrl: "/login" });
+      }}
+    >
+      {children}
+    </StudentShellContent>
+  );
+}
+
+function LocalStudentShell({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <StudentShellContent title={title}>
+      {children}
+    </StudentShellContent>
+  );
+}
+
+function StudentShellContent({
+  title,
+  children,
+  onSignOut,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onSignOut?: () => Promise<void> | void;
+}) {
+  const { logout, role, setIsLoggingOut } = useAuthStore();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -60,6 +116,21 @@ export function StudentShell({ title, children }: { title: string; children: Rea
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
     setLocation(`/jobs?search=${encodeURIComponent(search)}`);
+  };
+
+  const handleSignOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      if (onSignOut) {
+        await onSignOut();
+      }
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      logout();
+      setLocation("/login");
+      setIsLoggingOut(false);
+    }
   };
 
   const initial = role === "student" ? "S" : "U";
@@ -79,19 +150,44 @@ export function StudentShell({ title, children }: { title: string; children: Rea
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur md:px-8 shadow-xs">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 sm:gap-4 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur md:px-8 shadow-xs">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden text-slate-700">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-6">
-              <Link href="/home" onClick={() => setMobileOpen(false)} className="mb-8 flex items-center gap-2.5 text-lg font-bold">
-                <ShieldCheck className="h-6 w-6 text-indigo-600" />
-                VERIF-AI
-              </Link>
-              <StudentNav onNavigate={() => setMobileOpen(false)} />
+            <SheetContent side="left" className="w-72 p-6 flex flex-col justify-between">
+              <div>
+                <Link href="/home" onClick={() => setMobileOpen(false)} className="mb-8 flex items-center gap-2.5 text-lg font-bold">
+                  <ShieldCheck className="h-6 w-6 text-indigo-600" />
+                  VERIF-AI
+                </Link>
+                <StudentNav onNavigate={() => setMobileOpen(false)} />
+              </div>
+              <div className="border-t border-slate-200/80 pt-4 mt-auto space-y-2">
+                <Link
+                  href="/profile"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
+                    {initial}
+                  </span>
+                  My Profile
+                </Link>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    handleSignOut();
+                  }}
+                  className="w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </Button>
+              </div>
             </SheetContent>
           </Sheet>
 
@@ -109,30 +205,44 @@ export function StudentShell({ title, children }: { title: string; children: Rea
             </div>
           </form>
 
+          {/* Notifications icon */}
           <Button
             asChild
             variant="ghost"
             size="icon"
             aria-label="Notifications"
-            className="text-slate-600 hover:bg-slate-100 rounded-full"
+            className="text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
           >
             <Link href="/notifications">
               <Bell className="h-5 w-5" />
             </Link>
           </Button>
 
+          {/* Account button: Navigates to /profile, NEVER logs out */}
+          <Button
+            asChild
+            variant="ghost"
+            className="gap-2 rounded-full px-2 text-slate-700 hover:bg-slate-100 cursor-pointer"
+            title="My Profile"
+          >
+            <Link href="/profile">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
+                {initial}
+              </span>
+              <span className="hidden text-sm font-medium md:block">Account</span>
+            </Link>
+          </Button>
+
+          {/* Sign Out button: Terminates session and redirects to /login */}
           <Button
             variant="ghost"
-            onClick={() => {
-              logout();
-              setLocation("/");
-            }}
-            className="gap-2 rounded-full px-2 text-slate-700 hover:bg-slate-100"
+            size="sm"
+            onClick={handleSignOut}
+            className="gap-2 text-slate-600 hover:text-slate-950 hover:bg-slate-100 rounded-xl px-2.5 sm:px-3 text-xs sm:text-sm font-medium cursor-pointer"
+            title="Sign Out"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
-              {initial}
-            </span>
-            <span className="hidden text-sm font-medium md:block">Account</span>
+            <LogOut className="h-4 w-4 text-slate-500" />
+            <span className="hidden sm:inline">Sign Out</span>
           </Button>
         </header>
 

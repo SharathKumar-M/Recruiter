@@ -12,6 +12,8 @@ interface AuthState {
   setSyncError: (error: string | null) => void;
   demoMode: boolean;
   setDemoMode: (on: boolean) => void;
+  isLoggingOut: boolean;
+  setIsLoggingOut: (status: boolean) => void;
   logout: () => void;
 }
 
@@ -28,6 +30,8 @@ export const useAuthStore = create<AuthState>()(
       setSyncError: (syncError) => set({ syncError }),
       demoMode: false,
       setDemoMode: (demoMode) => set({ demoMode }),
+      isLoggingOut: false,
+      setIsLoggingOut: (isLoggingOut) => set({ isLoggingOut }),
       logout: () =>
         set({
           role: null,
@@ -35,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
           syncedUserId: null,
           syncError: null,
           demoMode: false,
+          isLoggingOut: false,
         }),
     }),
     {

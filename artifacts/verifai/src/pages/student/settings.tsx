@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { User, Mail, Shield, Bell, Lock, LogOut, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
+import { User, Bell, Shield, LogOut } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,36 @@ import { Switch } from "@/components/ui/switch";
 import { useAuthStore } from "@/hooks/use-auth-store";
 import { useGetStudentProfile } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
+import { useClerk } from "@clerk/react";
 import { toast } from "sonner";
 
 export default function StudentSettings() {
+  const clerkEnabled = Boolean(
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+    import.meta.env.CLERK_PUBLISHABLE_KEY
+  );
+
+  return clerkEnabled ? <ClerkStudentSettings /> : <LocalStudentSettings />;
+}
+
+function ClerkStudentSettings() {
+  const { signOut } = useClerk();
+  return (
+    <StudentSettingsContent
+      onSignOut={async () => {
+        await signOut({ redirectUrl: "/login" });
+      }}
+    />
+  );
+}
+
+function LocalStudentSettings() {
+  return <StudentSettingsContent />;
+}
+
+function StudentSettingsContent({ onSignOut }: { onSignOut?: () => Promise<void> | void }) {
   const { data: profile } = useGetStudentProfile();
-  const { logout } = useAuthStore();
+  const { logout, setIsLoggingOut } = useAuthStore();
   const [, setLocation] = useLocation();
 
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -23,10 +48,20 @@ export default function StudentSettings() {
     toast.success("Preferences saved successfully");
   };
 
-  const handleSignOut = () => {
-    logout();
-    setLocation("/");
-    toast.success("Signed out successfully");
+  const handleSignOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      if (onSignOut) {
+        await onSignOut();
+      }
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      logout();
+      setLocation("/login");
+      setIsLoggingOut(false);
+      toast.success("Signed out successfully");
+    }
   };
 
   return (
@@ -103,7 +138,7 @@ export default function StudentSettings() {
           </div>
 
           <div className="pt-2 flex justify-end">
-            <Button onClick={handleSavePreferences} className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Button onClick={handleSavePreferences} className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer">
               Save preferences
             </Button>
           </div>
@@ -120,7 +155,7 @@ export default function StudentSettings() {
         </CardHeader>
         <CardContent className="flex items-center justify-between">
           <p className="text-sm text-slate-600">Sign out of your active student session securely.</p>
-          <Button variant="destructive" onClick={handleSignOut} className="rounded-xl gap-2 bg-rose-600 hover:bg-rose-700 text-white">
+          <Button variant="destructive" onClick={handleSignOut} className="rounded-xl gap-2 bg-rose-600 hover:bg-rose-700 text-white cursor-pointer">
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
         </CardContent>

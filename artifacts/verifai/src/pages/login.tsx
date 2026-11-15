@@ -38,14 +38,14 @@ function LoginContent({
   isLoaded?: boolean;
   isSignedIn?: boolean;
 }) {
-  const { role, setRole, setDemoMode } = useAuthStore();
+  const { role, setRole, setDemoMode, isLoggingOut } = useAuthStore();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (clerkEnabled && isLoaded && isSignedIn) {
+    if (clerkEnabled && isLoaded && isSignedIn && !isLoggingOut) {
       setLocation(role === "recruiter" ? "/recruiter" : "/home");
     }
-  }, [isLoaded, isSignedIn, role, setLocation, clerkEnabled]);
+  }, [isLoaded, isSignedIn, role, setLocation, clerkEnabled, isLoggingOut]);
 
   const handleGoogleLogin = async (roleType: "student" | "recruiter") => {
     setRole(roleType);

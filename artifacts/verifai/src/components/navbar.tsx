@@ -5,28 +5,45 @@ import { ShieldCheck, LogOut, User, Briefcase, FileText } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function Navbar() {
-  return import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ? <ClerkNavbar /> : <LocalNavbar />;
+  const clerkEnabled = Boolean(
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+    import.meta.env.CLERK_PUBLISHABLE_KEY
+  );
+
+  return clerkEnabled ? <ClerkNavbar /> : <LocalNavbar />;
 }
 
 function ClerkNavbar() {
   const { signOut } = useClerk();
-  return <NavbarContent onSignOut={() => signOut({ redirectUrl: "/" })} />;
+  return (
+    <NavbarContent
+      onSignOut={async () => {
+        await signOut({ redirectUrl: "/login" });
+      }}
+    />
+  );
 }
 
 function LocalNavbar() {
   return <NavbarContent />;
 }
 
-function NavbarContent({ onSignOut }: { onSignOut?: () => void }) {
-  const { role, logout } = useAuthStore();
+function NavbarContent({ onSignOut }: { onSignOut?: () => Promise<void> | void }) {
+  const { role, logout, setIsLoggingOut } = useAuthStore();
   const [location, setLocation] = useLocation();
 
-  const handleLogout = () => {
-    logout();
-    if (onSignOut) {
-      onSignOut();
-    } else {
-      setLocation("/");
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      if (onSignOut) {
+        await onSignOut();
+      }
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      logout();
+      setLocation("/login");
+      setIsLoggingOut(false);
     }
   };
 
@@ -76,8 +93,13 @@ function NavbarContent({ onSignOut }: { onSignOut?: () => void }) {
                 </>
               )}
             </div>
-            
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2 text-muted-foreground hover:text-foreground">
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
               <LogOut className="w-4 h-4" />
               Sign Out
             </Button>

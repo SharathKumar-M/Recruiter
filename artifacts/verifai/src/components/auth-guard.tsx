@@ -26,13 +26,17 @@ export function AuthGuard({ children, allowedRole }: AuthGuardProps) {
 
 function LocalAuthGuard({ children, allowedRole }: AuthGuardProps) {
   const [, setLocation] = useLocation();
-  const { role } = useAuthStore();
+  const { role, isLoggingOut } = useAuthStore();
 
   useEffect(() => {
-    if (!role) setLocation("/login");
-  }, [role, setLocation]);
+    if (!isLoggingOut && !role) {
+      setLocation("/login");
+    }
+  }, [role, isLoggingOut, setLocation]);
 
-  if (!role || (allowedRole && role !== allowedRole)) return null;
+  if (!role || (allowedRole && role !== allowedRole) || isLoggingOut) {
+    return null;
+  }
   return <>{children}</>;
 }
 
@@ -51,6 +55,8 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
     syncError,
     setSyncError,
     demoMode,
+    isLoggingOut,
+    setIsLoggingOut,
     logout,
   } = useAuthStore();
   const syncUserMutation = useSyncUser();
@@ -58,15 +64,15 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
 
   // Unauthenticated redirect to login
   useEffect(() => {
-    if (demoMode) return;
+    if (demoMode || isLoggingOut) return;
     if (isLoaded && !isSignedIn) {
       setLocation("/login");
     }
-  }, [isLoaded, isSignedIn, setLocation, demoMode]);
+  }, [isLoaded, isSignedIn, setLocation, demoMode, isLoggingOut]);
 
   // Synchronize Clerk user with backend once per session/user
   useEffect(() => {
-    if (demoMode) {
+    if (demoMode || isLoggingOut) {
       return undefined;
     }
 
@@ -137,6 +143,7 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
     syncComplete,
     syncedUserId,
     demoMode,
+    isLoggingOut,
     role,
     setRole,
     setSyncComplete,
@@ -146,11 +153,11 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
 
   // Route protection & role redirection after sync completes
   useEffect(() => {
-    if (demoMode) return;
+    if (demoMode || isLoggingOut) return;
     if (isLoaded && isSignedIn && syncComplete && allowedRole && role !== allowedRole) {
       setLocation(role === "recruiter" ? "/recruiter" : "/home");
     }
-  }, [isLoaded, isSignedIn, syncComplete, allowedRole, role, setLocation, demoMode]);
+  }, [isLoaded, isSignedIn, syncComplete, allowedRole, role, setLocation, demoMode, isLoggingOut]);
 
   const handleRetry = useCallback(() => {
     syncInProgressRef.current = false;
@@ -159,14 +166,26 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
     setSyncedUserId(null);
   }, [setSyncError, setSyncComplete, setSyncedUserId]);
 
-  const handleSignOut = useCallback(() => {
-    logout();
-    signOut({ redirectUrl: "/" });
-  }, [logout, signOut]);
+  const handleSignOut = useCallback(async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut({ redirectUrl: "/login" });
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      logout();
+      setLocation("/login");
+      setIsLoggingOut(false);
+    }
+  }, [logout, signOut, setIsLoggingOut, setLocation]);
 
   if (demoMode) {
     if (allowedRole && role !== allowedRole) return null;
     return <>{children}</>;
+  }
+
+  if (isLoggingOut) {
+    return null;
   }
 
   // Display authentication/synchronization error with retry capability
@@ -186,7 +205,7 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button
               onClick={handleRetry}
-              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
               Retry Synchronization
@@ -194,7 +213,7 @@ function ClerkAuthGuard({ children, allowedRole }: AuthGuardProps) {
             <Button
               variant="outline"
               onClick={handleSignOut}
-              className="flex items-center justify-center gap-2 border-slate-300 text-slate-700 hover:bg-slate-100"
+              className="flex items-center justify-center gap-2 border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               Sign Out

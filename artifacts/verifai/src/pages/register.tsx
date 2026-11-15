@@ -27,16 +27,16 @@ function ClerkRegisterPage() {
 }
 
 function RegisterContent({ clerkEnabled, isSignedIn, isLoaded }: { clerkEnabled: boolean; isSignedIn?: boolean; isLoaded?: boolean }) {
-  const { role, setRole, setDemoMode } = useAuthStore();
+  const { role, setRole, setDemoMode, isLoggingOut } = useAuthStore();
   const [, setLocation] = useLocation();
   const [selectedRole, setSelectedRole] = useState<"student" | "recruiter">(role || "student");
 
   // Redirect signed-in users away from register
   useEffect(() => {
-    if (clerkEnabled && isLoaded && isSignedIn) {
+    if (clerkEnabled && isLoaded && isSignedIn && !isLoggingOut) {
       setLocation(role === "recruiter" ? "/recruiter" : "/home");
     }
-  }, [isLoaded, isSignedIn, role, setLocation, clerkEnabled]);
+  }, [isLoaded, isSignedIn, role, setLocation, clerkEnabled, isLoggingOut]);
 
   const handleRoleSelect = (r: "student" | "recruiter") => {
     setSelectedRole(r);
